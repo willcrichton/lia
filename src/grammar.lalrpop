@@ -1,0 +1,22 @@
+use std::str::FromStr;
+use syntax::parse::token::{Token, BinOpToken, Lit};
+use super::ast::Expr;
+
+grammar;
+
+extern {
+    enum Token {
+       Num => Token::Literal(<Lit>, _),
+       Ident => Token::Ident(..),
+       Op => Token::BinOp(<BinOpToken>),
+    }
+}
+
+pub expr: Expr = {
+    <e1:expr> <op:Op> <e2:atom> => Expr::Binop(op, Box::new(e1), Box::new(e2)),
+    atom
+};
+
+atom: Expr = {
+    <n:Num> => Expr::Literal(n),
+};
