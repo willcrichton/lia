@@ -11,23 +11,25 @@ extern {
        Num => LiaToken::RustToken(RsToken::Literal(Lit::Integer(<Name>), _)),
        Ident => LiaToken::RustToken(RsToken::Ident(<Ident>)),
        Op => LiaToken::RustToken(RsToken::BinOp(<BinOpToken>)),
-       Var => LiaToken::Var,
-       Function => LiaToken::Function,
        Eq => LiaToken::RustToken(RsToken::Eq),
        Semi => LiaToken::RustToken(RsToken::Semi),
        Lparen => LiaToken::RustToken(RsToken::OpenDelim(DelimToken::Paren)),
        Rparen => LiaToken::RustToken(RsToken::CloseDelim(DelimToken::Paren)),
        Lbrace => LiaToken::RustToken(RsToken::OpenDelim(DelimToken::Brace)),
        Rbrace => LiaToken::RustToken(RsToken::CloseDelim(DelimToken::Brace)),
+       Var => LiaToken::Var,
+       Function => LiaToken::Function,
+       Return => LiaToken::Return,
     }
 }
 
 pub fun: LiaFn = {
-    Function <id:Ident> Lparen Rparen Lbrace <s:stmt> Rbrace => LiaFn(id, s)
+    Function <id:Ident> Lparen Rparen Lbrace <s:stmt*> Rbrace => LiaFn(id, s)
 };
 
 stmt: LiaStmt = {
-    Var <id:Ident> Eq <e:expr> Semi => LiaStmt::Assign(id, e)
+    Var <id:Ident> Eq <e:expr> Semi => LiaStmt::Assign(id, e),
+    Return <e:expr> Semi => LiaStmt::Return(e),
 };
 
 expr: LiaExpr = {
@@ -37,4 +39,5 @@ expr: LiaExpr = {
 
 atom: LiaExpr = {
     <n:Num> => LiaExpr::Integer(i32::from_str(&n.as_str()).unwrap()),
+    <id:Ident> => LiaExpr::Var(id),
 };

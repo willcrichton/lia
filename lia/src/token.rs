@@ -4,7 +4,8 @@ use syntax::parse::token::Token;
 pub enum LiaToken {
     RustToken(Token),
     Var,
-    Function
+    Function,
+    Return,
 }
 
 impl LiaToken {
@@ -16,6 +17,7 @@ impl LiaToken {
             match unsafe { s.slice_unchecked(0, s.len()) } {
                 "function" => LiaToken::Function,
                 "var" => LiaToken::Var,
+                "return" => LiaToken::Return,
                 _ => LiaToken::RustToken(t)
             }
         } else {

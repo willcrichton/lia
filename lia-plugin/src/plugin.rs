@@ -1,18 +1,18 @@
 use syntax::codemap::Span;
-use syntax::parse::token;
+use syntax::parse::token::Token;
 use syntax::ast::TokenTree;
 use syntax::ext::base::{ExtCtxt, MacResult, DummyResult, MacEager};
-use syntax::ext::build::AstBuilder;  // trait for expr_usize
-use super::token::LiaToken;
+use lia::token::LiaToken;
+use lia;
 
-fn tt_flatten(tt: &TokenTree) -> Vec<token::Token> {
+fn tt_flatten(tt: &TokenTree) -> Vec<Token> {
     match tt {
         &TokenTree::Token(_, ref t) => vec![t.clone()],
         &TokenTree::Delimited(_, ref delim) => {
-            let mut toks: Vec<token::Token> =
+            let mut toks: Vec<Token> =
                 delim.tts.iter().flat_map(tt_flatten).collect();
-            toks.insert(0, token::Token::OpenDelim(delim.delim));
-            toks.push(token::Token::CloseDelim(delim.delim));
+            toks.insert(0, Token::OpenDelim(delim.delim));
+            toks.push(Token::CloseDelim(delim.delim));
             toks
         },
         _ => panic!("TokenTree has Sequence??, {:?}", tt)
@@ -22,11 +22,6 @@ fn tt_flatten(tt: &TokenTree) -> Vec<token::Token> {
 pub fn expand_lia(cx: &mut ExtCtxt, sp: Span, args: &[TokenTree]) ->
     Box<MacResult + 'static>
 {
-    // if args.len() != 1 {
-    //     cx.span_err(sp, "only takes one argument");
-    //     return DummyResult::any(sp);
-    // }
-
     let tokens: Vec<LiaToken> =
         args
         .into_iter()
@@ -34,10 +29,10 @@ pub fn expand_lia(cx: &mut ExtCtxt, sp: Span, args: &[TokenTree]) ->
         .map(|t| LiaToken::from_rust_token(t))
         .collect();
 
-    println!("tokens: {:?}", tokens);
+    //println!("tokens: {:?}", tokens);
 
     let ast =
-        super::grammar::parse_fun(tokens)
+        lia::grammar::parse_fun(tokens)
         .unwrap_or_else(|err| panic!("Parse error {:?}", err));
 
     super::codegen::top_level(cx, sp, ast)

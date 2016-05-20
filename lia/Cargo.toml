@@ -1,12 +1,8 @@
 [package]
-name = "lia-lang"
+name = "lia"
 version = "0.1.0"
 authors = ["Will Crichton <wcrichto@stanford.edu>"]
 build = "build.rs"
-
-[lib]
-name = "lia_lang"
-crate-type = ["dylib"]
 
 [dependencies]
 lalrpop-util = "0.11.0"

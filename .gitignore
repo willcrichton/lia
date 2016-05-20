@@ -1,2 +1,8 @@
-target
-Cargo.lock
+lia/Cargo.lock
+lia/target
+lia/src/grammar.rs
+
+lia-plugin/Cargo.lock
+lia-plugin/target
+
+lia-tests/target

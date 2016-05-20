@@ -1,0 +1,11 @@
+[package]
+name = "lia-plugin"
+version = "0.1.0"
+authors = ["Will Crichton <wcrichto@stanford.edu>"]
+
+[lib]
+plugin = true
+crate-type = ["dylib"]
+
+[dependencies]
+lia = { path = "../lia" }
