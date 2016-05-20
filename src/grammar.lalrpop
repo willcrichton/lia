@@ -1,22 +1,40 @@
 use std::str::FromStr;
-use syntax::parse::token::{Token, BinOpToken, Lit};
-use super::ast::Expr;
+use syntax::ast::{Name, Ident};
+use syntax::parse::token::{Token as RsToken, BinOpToken, Lit, DelimToken};
+use super::ast::{LiaExpr, LiaStmt, LiaFn};
+use super::token::LiaToken;
 
 grammar;
 
 extern {
-    enum Token {
-       Num => Token::Literal(<Lit>, _),
-       Ident => Token::Ident(..),
-       Op => Token::BinOp(<BinOpToken>),
+    enum LiaToken {
+       Num => LiaToken::RustToken(RsToken::Literal(Lit::Integer(<Name>), _)),
+       Ident => LiaToken::RustToken(RsToken::Ident(<Ident>)),
+       Op => LiaToken::RustToken(RsToken::BinOp(<BinOpToken>)),
+       Var => LiaToken::Var,
+       Function => LiaToken::Function,
+       Eq => LiaToken::RustToken(RsToken::Eq),
+       Semi => LiaToken::RustToken(RsToken::Semi),
+       Lparen => LiaToken::RustToken(RsToken::OpenDelim(DelimToken::Paren)),
+       Rparen => LiaToken::RustToken(RsToken::CloseDelim(DelimToken::Paren)),
+       Lbrace => LiaToken::RustToken(RsToken::OpenDelim(DelimToken::Brace)),
+       Rbrace => LiaToken::RustToken(RsToken::CloseDelim(DelimToken::Brace)),
     }
 }
 
-pub expr: Expr = {
-    <e1:expr> <op:Op> <e2:atom> => Expr::Binop(op, Box::new(e1), Box::new(e2)),
+pub fun: LiaFn = {
+    Function <id:Ident> Lparen Rparen Lbrace <s:stmt> Rbrace => LiaFn(id, s)
+};
+
+stmt: LiaStmt = {
+    Var <id:Ident> Eq <e:expr> Semi => LiaStmt::Assign(id, e)
+};
+
+expr: LiaExpr = {
+    <e1:expr> <op:Op> <e2:atom> => LiaExpr::Binop(op, Box::new(e1), Box::new(e2)),
     atom
 };
 
-atom: Expr = {
-    <n:Num> => Expr::Literal(n),
+atom: LiaExpr = {
+    <n:Num> => LiaExpr::Integer(i32::from_str(&n.as_str()).unwrap()),
 };

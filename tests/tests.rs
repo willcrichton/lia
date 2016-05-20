@@ -1,13 +1,10 @@
 #![feature(plugin)]
 #![plugin(lia_lang)]
 
+lia!(function foo() {
+    var x = 1;
+});
 
 #[test]
 fn macro_test() {
-    println!("{}", lia!(1 + 2));
-
-    // match grammar::parse_expr("1 + 2") {
-    //     Ok(val) => println!("{}", cast!(val, i32)),
-    //     Err(_) => println!(":(")
-    // }
 }

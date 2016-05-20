@@ -5,6 +5,7 @@ extern crate rustc;
 extern crate rustc_plugin;
 extern crate syntax;
 
+mod token;
 mod ast;
 mod lia;
 mod grammar;

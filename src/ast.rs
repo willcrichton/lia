@@ -1,7 +1,16 @@
-use syntax::parse::token::{Token, BinOpToken, Lit};
+use syntax::parse::token::{Token, BinOpToken};
+use syntax::ast::Ident;
 
 #[derive(Debug)]
-pub enum Expr {
-    Binop(BinOpToken, Box<Expr>, Box<Expr>),
-    Literal(Lit),
+pub enum LiaExpr {
+    Binop(BinOpToken, Box<LiaExpr>, Box<LiaExpr>),
+    Integer(i32),
 }
+
+#[derive(Debug)]
+pub enum LiaStmt {
+    Assign(Ident, LiaExpr)
+}
+
+#[derive(Debug)]
+pub struct LiaFn(pub Ident, pub LiaStmt);
