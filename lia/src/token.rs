@@ -1,16 +1,17 @@
-use syntax::parse::token::Token;
+use syntax::parse::token::{Token as RsToken};
 
 #[derive(Debug)]
 pub enum LiaToken {
-    RustToken(Token),
+    RustToken(RsToken),
     Var,
     Function,
     Return,
+    If,
 }
 
 impl LiaToken {
-    pub fn from_rust_token(t: Token) -> LiaToken {
-        if let Token::Ident(ident) = t {
+    pub fn from_rust_token(t: RsToken) -> LiaToken {
+        if let RsToken::Ident(ident) = t {
             let s = ident.name.as_str();
 
             // No better way to go from InternedString -> &str?
@@ -18,6 +19,7 @@ impl LiaToken {
                 "function" => LiaToken::Function,
                 "var" => LiaToken::Var,
                 "return" => LiaToken::Return,
+                "if" => LiaToken::If,
                 _ => LiaToken::RustToken(t)
             }
         } else {

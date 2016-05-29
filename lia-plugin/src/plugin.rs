@@ -32,7 +32,7 @@ pub fn expand_lia(cx: &mut ExtCtxt, sp: Span, args: &[TokenTree]) ->
     //println!("tokens: {:?}", tokens);
 
     let ast =
-        lia::grammar::parse_fun(tokens)
+        lia::grammar::parse_funs(tokens)
         .unwrap_or_else(|err| panic!("Parse error {:?}", err));
 
     super::codegen::top_level(cx, sp, ast)

@@ -1,14 +1,25 @@
 use std::any::Any;
-use std::rc::Rc;
-use std::cell::RefCell;
+use std::sync::{Arc, Mutex};
 
-pub type LiaAny = Rc<RefCell<Any>>;
+pub type LiaAny = Arc<Mutex<Box<Any>>>;
+pub type LiaObject = ();
+pub type LiaClosure = Box<Fn(Vec<LiaAny>) -> LiaAny>;
 
 pub fn alloc<T: Any>(t: T) -> LiaAny {
-    Rc::new(RefCell::new(t))
+    Arc::new(Mutex::new(Box::new(t)))
 }
 
 #[macro_export]
 macro_rules! cast {
-    ($e:expr, $t:ty) => ($e.borrow_mut().downcast_mut::<$t>().unwrap())
+    ($id:ident, $e:expr, $t:ty) => {
+        let mut _tmp = $e.lock().unwrap();
+        let $id = _tmp.downcast_mut::<$t>().unwrap();
+    }
+}
+
+#[macro_export]
+macro_rules! call {
+    ($id:ident ( $( $x:expr ),* )) => {{
+        $id(vec![$( alloc($x) ),*])
+    }}
 }

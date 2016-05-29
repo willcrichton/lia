@@ -14,11 +14,13 @@ lia! {
     }
 }
 
-#[test]
-fn macro_test() {
+fn main() {
+    use std::time::Instant;
     let n = 30;
     let start = Instant::now();
     let result = call!(fib(n));
     cast!(v, result, i32);
-    println!("Result: {}", v);
+    let duration = start.elapsed();
+    let time = (duration.as_secs() as f32) + (duration.subsec_nanos() as f32) / 10e9;
+    println!("Result: {} (took {}s)", v, time);
 }
