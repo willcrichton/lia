@@ -6,4 +6,5 @@ extern crate syntax;
 pub mod token;
 pub mod ast;
 pub mod grammar;
+pub mod elaborate;
 pub mod runtime;

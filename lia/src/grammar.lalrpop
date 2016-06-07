@@ -1,6 +1,6 @@
 use std::str::FromStr;
 use syntax::ast::{Name, Ident};
-use syntax::parse::token::{Token as RsToken, BinOpToken, Lit, DelimToken};
+use syntax::parse::token::{Token as RsToken, BinOpToken, Lit, DelimToken, intern};
 use super::ast::{LiaExpr, LiaStmt, LiaFn};
 use super::token::LiaToken;
 
@@ -9,17 +9,25 @@ grammar;
 extern {
     enum LiaToken {
        Num => LiaToken::RustToken(RsToken::Literal(Lit::Integer(<Name>), _)),
+       String => LiaToken::RustToken(RsToken::Literal(Lit::Str_(<Name>), _)),
        Ident => LiaToken::RustToken(RsToken::Ident(<Ident>)),
        Op => LiaToken::RustToken(RsToken::BinOp(<BinOpToken>)),
        Eq => LiaToken::RustToken(RsToken::Eq),
        EqEq => LiaToken::RustToken(RsToken::EqEq),
+       Ge => LiaToken::RustToken(RsToken::Ge),
+       Le => LiaToken::RustToken(RsToken::Le),
        Semi => LiaToken::RustToken(RsToken::Semi),
        Comma => LiaToken::RustToken(RsToken::Comma),
+       Colon => LiaToken::RustToken(RsToken::Colon),
+       Dot => LiaToken::RustToken(RsToken::Dot),
        At => LiaToken::RustToken(RsToken::At),
+       ModSep => LiaToken::RustToken(RsToken::ModSep),
        Lparen => LiaToken::RustToken(RsToken::OpenDelim(DelimToken::Paren)),
        Rparen => LiaToken::RustToken(RsToken::CloseDelim(DelimToken::Paren)),
        Lbrace => LiaToken::RustToken(RsToken::OpenDelim(DelimToken::Brace)),
        Rbrace => LiaToken::RustToken(RsToken::CloseDelim(DelimToken::Brace)),
+       Lbracket => LiaToken::RustToken(RsToken::OpenDelim(DelimToken::Bracket)),
+       Rbracket => LiaToken::RustToken(RsToken::CloseDelim(DelimToken::Bracket)),
        Var => LiaToken::Var,
        Function => LiaToken::Function,
        Return => LiaToken::Return,
@@ -33,7 +41,7 @@ pub funs: Vec<LiaFn> = {
 };
 
 fun: LiaFn = {
-    Function <id:Ident> Lparen <args:CommaSep<Ident>> Rparen Lbrace <s:stmt_list> Rbrace => LiaFn {
+    Function <id:Ident> Lparen <args:Sep<Ident, Comma>> Rparen Lbrace <s:stmt_list> Rbrace => LiaFn {
         name: id,
         args: args,
         body: s,
@@ -49,40 +57,82 @@ block: Vec<LiaStmt> = {
 };
 
 stmt: Vec<LiaStmt> = {
-    Var <id:Ident> Eq <e:expr> Semi => vec![LiaStmt::Declare(id), LiaStmt::Assign(id, e)],
-    <id:Ident> Eq <e:expr> Semi => vec![LiaStmt::Assign(id, e)],
-    Return <e:expr> Semi => vec![LiaStmt::Return(e)],
     <e:expr> Semi => vec![LiaStmt::Expr(e)],
+    Var <id:Ident> Eq <e:expr> Semi => vec![LiaStmt::Declare(id),
+                                            LiaStmt::Assign(LiaExpr::Var(id), e)],
+    <lhs:expr> Eq <rhs:expr> Semi => vec![LiaStmt::Assign(lhs, rhs)],
+    Return <e:expr> Semi => vec![LiaStmt::Return(e)],
     If Lparen <e:expr> Rparen <s:block> => vec![LiaStmt::If(e, s)],
-    // For Lparen Var <id:Ident> Eq <e:expr> Semi => LiaStmt::For
 };
 
 expr: LiaExpr = {
-    <e1:expr> <op:Op> <e2:atom> => LiaExpr::Binop(op, Box::new(e1), Box::new(e2)),
-    <e1:expr> EqEq <e2:atom> => LiaExpr::Equals(Box::new(e1), Box::new(e2)),
+    <e1:expr> <op:Op> <e2:atom> => LiaExpr::BinOp(RsToken::BinOp(op), Box::new(e1), Box::new(e2)),
+    <e1:expr> EqEq <e2:atom> => LiaExpr::BinOp(RsToken::EqEq, Box::new(e1), Box::new(e2)),
+    <e1:expr> Le <e2:atom> => LiaExpr::BinOp(RsToken::Le, Box::new(e1), Box::new(e2)),
     atom
+};
+
+string: LiaExpr = {
+    <s:String> => LiaExpr::String(String::from_str(&s.as_str()).unwrap())
+};
+
+id_string: LiaExpr = {
+    <id:Ident> => LiaExpr::String(String::from_str(&id.name.as_str()).unwrap())
+};
+
+key_ident: LiaExpr = {
+    <e:ident> <ids:(Dot <id_string>)+> => {
+        let mut ex = e;
+        for id in ids {
+            ex = LiaExpr::Index(Box::new(ex), Box::new(id));
+        }
+        ex
+    }
 };
 
 atom: LiaExpr = {
     <n:Num> => LiaExpr::Integer(i32::from_str(&n.as_str()).unwrap()),
-    <id:ident> => id,
-    <id:ident> Lparen <e:CommaSep<expr>> Rparen => LiaExpr::Call(Box::new(id), e),
-    Lparen <f:expr> Rparen Lparen <e:CommaSep<expr>> Rparen => LiaExpr::Call(Box::new(f), e),
-    Function Lparen Rparen Lbrace <s:stmt_list> Rbrace => LiaExpr::Closure(s),
+    string,
+    ident,
+    key_ident,
+    <f:ident_or_expr> Lparen <e:Sep<expr, Comma>> Rparen => LiaExpr::Call(Box::new(f), e),
+    Lbrace <kvs:Sep<key_value, Comma>> Rbrace => LiaExpr::Object(kvs),
+    <obj:ident_or_expr> Lbracket <e:expr> Rbracket => LiaExpr::Index(Box::new(obj), Box::new(e)),
+    Function Lparen <args:Sep<Ident, Comma>> Rparen Lbrace <s:stmt_list> Rbrace => LiaExpr::Closure(args, s),
 };
 
 ident: LiaExpr = {
     <id:Ident> => LiaExpr::Var(id),
-    At <id:Ident> => LiaExpr::RsVar(id),
+    At <id:SepPlus<Ident, ModSep>> => LiaExpr::RsVar(id),
 };
 
-CommaSep<T>: Vec<T> = {
-    <v:(<T> Comma)*> <e:T?> => match e {
+ident_or_expr: LiaExpr = {
+    ident,
+    key_ident,
+    Lparen <e:expr> Rparen => e
+};
+
+key_value: (LiaExpr, LiaExpr) = {
+   <s:string> Colon <e:expr> => (s, e),
+   <s:id_string> Colon <e:expr> => (s, e),
+};
+
+Sep<T, S>: Vec<T> = {
+    <v:(<T> S)*> <e:T?> => match e {
         None => v,
         Some(e) => {
             let mut v = v;
             v.push(e);
             v
         }
+    }
+};
+
+
+SepPlus<T, S>: Vec<T> = {
+    <v:(<T> S)*> <e:T> => {
+            let mut v = v;
+            v.push(e);
+            v
     }
 };

@@ -1,4 +1,4 @@
-#![feature(plugin, const_fn)]
+#![feature(plugin, box_syntax)]
 #![plugin(lia_plugin)]
 
 #[macro_use]
@@ -6,19 +6,46 @@ extern crate lia;
 
 use lia::runtime::*;
 
+struct Matrix {
+    data: Vec<i32>,
+    rows: i32,
+    cols: i32,
+}
+
+#[lia_impl_glue]
+impl Matrix {
+    pub fn new() -> Matrix {
+        Matrix {
+            rows: 0,
+            cols: 0,
+            data: Vec::new(),
+        }
+    }
+
+    pub fn multiply(&self, other: &Matrix) -> Matrix {
+        if self.cols != other.rows {
+            // TODO: what if this returned a Result instead?
+            panic!("dimension mismatch");
+        }
+
+        // implement efficient mat mul here
+
+        return Matrix::new();
+    }
+}
+
 lia! {
-    function fib(n) {
-        if (n == 0) { return 1; }
-        if (n == 1) { return 1; }
-        return @fib(n-1) + @fib(n-2);
+    function foo() {
+        var x = @Matrix::new();
+        var y = @Matrix::new();
+        var z = @Matrix::multiply(x, y);
+        return 0;
     }
 }
 
 #[test]
 fn macro_test() {
-    let n = 30;
-    let start = Instant::now();
-    let result = call!(fib(n));
-    cast!(v, result, i32);
-    println!("Result: {}", v);
+    let result: LiaAny = call!(foo());
+    cast!(let num: i32 = result);
+    println!("result {}", num);
 }

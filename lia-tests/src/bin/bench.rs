@@ -1,4 +1,4 @@
-#![feature(plugin, const_fn)]
+#![feature(plugin, const_fn, box_syntax)]
 #![plugin(lia_plugin)]
 
 #[macro_use]
@@ -8,8 +8,7 @@ use lia::runtime::*;
 
 lia! {
     function fib(n) {
-        if (n == 0) { return 1; }
-        if (n == 1) { return 1; }
+        if (n <= 1) { return 1; }
         return @fib(n-1) + @fib(n-2);
     }
 }
