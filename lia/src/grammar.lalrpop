@@ -97,6 +97,7 @@ atom: LiaExpr = {
     key_ident,
     <f:ident_or_expr> Lparen <e:Sep<expr, Comma>> Rparen => LiaExpr::Call(Box::new(f), e),
     Lbrace <kvs:Sep<key_value, Comma>> Rbrace => LiaExpr::Object(kvs),
+    Lbracket <vals:Sep<expr, Comma>> Rbracket => LiaExpr::Array(vals),
     <obj:ident_or_expr> Lbracket <e:expr> Rbracket => LiaExpr::Index(Box::new(obj), Box::new(e)),
     Function Lparen <args:Sep<Ident, Comma>> Rparen Lbrace <s:stmt_list> Rbrace => LiaExpr::Closure(args, s),
 };

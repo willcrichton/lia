@@ -110,12 +110,24 @@ fn gen_expr(cx: &mut ExtCtxt, expr: LiaExpr) -> P<Expr> {
                 let mut ht = _tmp.downcast_mut::<LiaObject>().expect("Can only index into objects");
                 let key = $key;
                 let _tmp = key.borrow();
-                let _tmp = _tmp.borrow();
-                match ht.get(_tmp.downcast_ref::<String>().expect("Object key must be string")) {
+                let key = _tmp.borrow();
+                let s = if key.is::<i32>() {
+                    format!("{}", key.downcast_ref::<i32>().unwrap())
+                } else {
+                    key.downcast_ref::<String>().expect("Object key must be string or int").clone()
+                };
+                match ht.get(&s) {
                     Some(val) => val.clone(),
-                    None => panic!("Bad key"),
+                    None => panic!("Invalid key {}", s),
                 }
             })
+        },
+        LiaExpr::Array(exprs) => {
+            let mut kvs = Vec::new();
+            for i in 0..exprs.len() {
+                kvs.push((LiaExpr::String(format!("{}", i)), exprs[i].clone()));
+            }
+            gen_expr(cx, LiaExpr::Object(kvs))
         },
         LiaExpr::Call(box fun, exprs) => {
             let exps: Vec<P<Expr>> =
@@ -259,7 +271,7 @@ fn gen_fn(cx: &mut ExtCtxt, fun: LiaFn) -> P<Item> {
     for i in 0..fun.args.len() {
         let arg_id = fun.args[i];
         let s = format!("Arg {}", i);
-        binds.push(quote_stmt!(cx, let $arg_id = args.get($i).expect($s).clone()).expect("Invalid stmt"));
+        binds.push(quote_stmt!(cx, let $arg_id = args.get($i).expect($s).clone()).unwrap());
     }
 
     quote_item!(

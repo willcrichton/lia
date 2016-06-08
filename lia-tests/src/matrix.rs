@@ -9,8 +9,7 @@ use lia::runtime::*;
 lia! {
     function foo() {
         var x = [1, 2, 3];
-        x[0] = 2;
-        return x[0] + x[1];
+        return 0;
     }
 }
 

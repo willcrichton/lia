@@ -13,6 +13,7 @@ pub enum LiaExpr {
     Closure(Vec<Ident>, Vec<LiaStmt>),
     Object(Vec<(LiaExpr, LiaExpr)>),
     Index(Box<LiaExpr>, Box<LiaExpr>),
+    Array(Vec<LiaExpr>),
 }
 
 #[derive(Debug, Clone)]
