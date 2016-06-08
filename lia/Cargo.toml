@@ -1,6 +1,11 @@
 [package]
 name = "lia"
 version = "0.1.0"
+description = "A high-level language for Rust"
+repository = "https://github.com/willcrichton/lia"
+readme = "../README.md"
+keywords = ["language", "compiler", "high-level", "dynamic"]
+license = "Apache-2.0/MIT"
 authors = ["Will Crichton <wcrichto@stanford.edu>"]
 build = "build.rs"
 

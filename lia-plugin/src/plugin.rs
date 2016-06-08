@@ -1,14 +1,17 @@
 use syntax::codemap::{Span, Spanned};
 use syntax::parse::token::Token;
 use syntax::ast::*;
-use syntax::ext::base::{ExtCtxt, MacResult, DummyResult, Annotatable};
+use syntax::ext::base::{ExtCtxt, MacResult, MacEager, Annotatable};
 use syntax::ext::build::AstBuilder;
 use syntax::ext::mtwt;
 use syntax::fold;
 use syntax::fold::Folder;
+use syntax::util::small_vector::SmallVector as Svec;
+use syntax::ptr::P;
 
 use lia::token::LiaToken;
 use lia::ast::prefix_ident;
+use lia::codegen::gen_fn;
 use lia;
 
 fn tt_flatten(tt: &TokenTree) -> Vec<Token> {
@@ -25,6 +28,7 @@ fn tt_flatten(tt: &TokenTree) -> Vec<Token> {
     }
 }
 
+#[allow(unused_variables)]
 pub fn expand_lia(cx: &mut ExtCtxt, sp: Span, args: &[TokenTree]) ->
     Box<MacResult + 'static>
 {
@@ -43,7 +47,8 @@ pub fn expand_lia(cx: &mut ExtCtxt, sp: Span, args: &[TokenTree]) ->
 
     let ast = lia::elaborate::elaborate(ast);
 
-    super::codegen::top_level(cx, sp, ast)
+    let fs: Vec<P<Item>> = ast.into_iter().map(|fun| gen_fn(cx, fun)).collect();
+    MacEager::items(Svec::many(fs))
 }
 
 // Almost identical copy of the one from syntax::ext::expand, copied because
@@ -61,25 +66,7 @@ impl Folder for IdentRenamer {
     }
 }
 
-/************************** BERRY FINDER **************************/
-// fn perry(berry) {
-//     find(maryberry);
-//     if not find(maryberry){ panic!() }
-//     if not find(willberry){kind_of_panic!() }
-//     else {
-//         panic_more!()
-//     }
-// }
-// pub panic!()
-//     hfxzlbkz n;lxz nzs
-
-//     ;bnsvakbsvain28e9848tht49et6r7e8930rt8r9e098rtre;
-// ckhvvk nk;`
-//     panic!()  nvkd
-//     }
-
-// C++++++++++++++1
-
+#[allow(unused_variables)]
 pub fn impl_glue(cx: &mut ExtCtxt, sp: Span, mitem: &MetaItem, item: Annotatable)
                  -> Annotatable
 {

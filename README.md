@@ -1,6 +1,6 @@
 # Lia: A High-Level Language For Rust
 
-| 俩 (liǎ) - two, both
+> 俩 (liǎ) - two, both
 
 Lia is a programming language that enables expressive programming and rapid prototyping by eliminating memory management/lifetimes and static typing. Lia compiles down into Rust code, so it seamlessly interoperates with Rust libraries. This enables Lia users to drop down into efficient Rust code when necessary, but work with a high-level Javascript-esque language for the majority of their application. For example, binding to a matrix library (à la numpy) is simple:
 
@@ -33,26 +33,7 @@ struct Matrix {
 // do the appropriate type-casting from Lia's dynamic types into Rust's static types.
 #[lia_impl_glue]
 impl Matrix {
-    pub fn new(rows: i32, cols: i32) -> Matrix {
-        let mut data = Vec::with_capacity((rows * cols) as usize);
-        for _ in 0..(rows * cols) {
-            data.push(0);
-        }
-
-        Matrix {
-            rows: rows,
-            cols: cols,
-            data: data,
-        }
-    }
-
-    pub fn get(&self, row: i32, col: i32) -> i32 {
-        self.data[(row * self.cols + col) as usize]
-    }
-
-    pub fn set(&mut self, row: i32, col: i32, val: i32) {
-        self.data[(row * self.cols + col) as usize] = val;
-    }
+    // some functions omitted...
 
     pub fn multiply(&self, other: &Matrix) -> Matrix {
         assert!(self.cols == other.rows);
@@ -83,7 +64,29 @@ fn main() {
 
 ## Using Lia
 
-Look at `lia-tests/src` for example usage. Right now Lia is still in its early stages and requires nightly to build so it's not ready for prime time, but I encourage you to try it out and bring up any suggestions in an issue/PR or email me at [wcrichto@stanford.edu](mailto:wcrichto@stanford.edu).
+Look at `lia-tests/src/lib.rs` for example usage. Right now Lia is still in its early stages and requires nightly to build so it's not ready for prime time, but I encourage you to try it out and bring up any suggestions in an issue/PR or email me at [wcrichto@stanford.edu](mailto:wcrichto@stanford.edu).
+
+To use Lia in your own code, first switch to Rust nightly with `multirust override nightly`. Then add to your `Cargo.toml`:
+
+```toml
+[dependencies]
+lia = "0.1.0"
+lia-plugin = "0.1.0"
+```
+
+Then in the file you want to use Lia:
+
+```rust
+#![feature(plugin, box_syntax)]
+#![plugin(lia_plugin)]
+
+#[macro_use]
+extern crate lia;
+
+use lia::runtime::*;
+
+lia! { ... }
+```
 
 ## Motivation
 

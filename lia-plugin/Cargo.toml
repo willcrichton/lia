@@ -1,6 +1,9 @@
 [package]
 name = "lia-plugin"
 version = "0.1.0"
+description = "Compiler plugin for writing Lia code as a macro"
+repository = "https://github.com/willcrichton/lia"
+license = "Apache-2.0/MIT"
 authors = ["Will Crichton <wcrichto@stanford.edu>"]
 
 [lib]
@@ -8,4 +11,4 @@ plugin = true
 crate-type = ["dylib"]
 
 [dependencies]
-lia = { path = "../lia" }
+lia = { path = "../lia", version = "0.1.0" }

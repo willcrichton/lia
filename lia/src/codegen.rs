@@ -1,11 +1,10 @@
-use lia::ast::{LiaExpr, LiaStmt, LiaFn, prefix_ident};
 use syntax::codemap::{Span, ExpnId, BytePos, Pos};
-use syntax::ext::base::{ExtCtxt, MacResult, DummyResult, MacEager};
-use syntax::util::small_vector::SmallVector as Svec;
+use syntax::ext::base::ExtCtxt;
 use syntax::ast::{Expr, Stmt, Item, Path, Ident, PathSegment, PathParameters};
 use syntax::parse::token::{Token as RsToken, BinOpToken};
-
 use syntax::ptr::P;
+
+use ast::{LiaExpr, LiaStmt, LiaFn, prefix_ident};
 
 fn rs_ident_to_path(mut segs: Vec<Ident>) -> Path {
     {
@@ -264,7 +263,7 @@ fn gen_stmt(cx: &mut ExtCtxt, stmt: LiaStmt) -> Vec<Stmt> {
     }
 }
 
-fn gen_fn(cx: &mut ExtCtxt, fun: LiaFn) -> P<Item> {
+pub fn gen_fn(cx: &mut ExtCtxt, fun: LiaFn) -> P<Item> {
     let st: Vec<Stmt> = fun.body.into_iter().flat_map(|stmt| gen_stmt(cx, stmt)).collect();
     let id = fun.name;
     let mut binds = vec![];
@@ -283,10 +282,4 @@ fn gen_fn(cx: &mut ExtCtxt, fun: LiaFn) -> P<Item> {
             return alloc(());
         }
     ).unwrap()
-}
-
-pub fn top_level(cx: &mut ExtCtxt, sp: Span, funs: Vec<LiaFn>) -> Box<MacResult+ 'static>
-{
-    let fs: Vec<P<Item>> = funs.into_iter().map(|fun| gen_fn(cx, fun)).collect();
-    MacEager::items(Svec::many(fs))
 }

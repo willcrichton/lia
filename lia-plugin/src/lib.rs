@@ -1,12 +1,11 @@
-#![feature(rustc_private, plugin_registrar, quote, box_patterns, box_syntax)]
-#![allow(unused_imports, unused_variables, dead_code)]
+#![feature(rustc_private, plugin_registrar, quote, box_syntax)]
+//#![allow(unused_imports, unused_variables, dead_code)]
 
 extern crate rustc;
 extern crate rustc_plugin;
 extern crate syntax;
 extern crate lia;
 
-mod codegen;
 mod plugin;
 
 use rustc_plugin::Registry;
