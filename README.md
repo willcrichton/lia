@@ -2,7 +2,7 @@
 
 Lia is a programming language that enables expressive programming and rapid prototyping by eliminating memory management/lifetimes and static typing. Lia compiles down into Rust code, so it seamlessly interoperates with Rust libraries. This enables Lia users to drop down into efficient Rust code when necessary, but work with a high-level Javascript-esque language for the majority of their program. For example, binding to a matrix library (like numpy) is simple:
 
-```
+```rust
 #![feature(plugin, box_syntax)]
 #![plugin(lia_plugin)]
 
@@ -87,10 +87,10 @@ Look at `lia-tests/src` for example usage. Right now Lia is still in its early s
 
 One of the biggest challenges facing programming languages today is interoperability. As PLs both proliferate in ever increasing numbers and specialize to application domains, many programmers need the ability to work effectively across languages. For example:
 
-* Python has a plethora of bindings to C, CUDA, etc. for efficient operations on numeric or image data. This is implemented in libraries like numpy and scipy.
-* Javascript recently saw the rise of React which enabled seamless integration of HTML and Javascript in their new JSX format (this is very similar to the procedural HTML generation that popularized PHP many years earlier).
+* Python has a plethora of bindings to C, CUDA, etc. for efficient operations on numeric or image data. This is implemented in libraries like [numpy](http://www.numpy.org/) and [scipy](http://www.scipy.org/).
+* Javascript recently saw the rise of [React](http://reactjs.org/) which enabled seamless integration of HTML and Javascript in their new JSX format (this is very similar to the procedural HTML generation that popularized PHP many years earlier).
 * A number of domain-specific languages, e.g. [Halide](http://halide-lang.org/), have popped up in recent years with varying levels of interoperability to existing general-purpose programming languages.
 
 Many of the problems with interoperability between two languages can be solved by sharing a common type system. Even if two languages have a different runtime and different syntax, if they merge at the type-level then it's considerably easier for them to work together. For example, [Terra](http://terralang.org) addressed this problem by modifying Lua to have code generation facilities for a C-like language and then using LuaJIT's FFI as the type system glue between the two languages. However, this approach necessitates that the two languages (Lua and Terra) have separate runtimes and relies on a fragile layer of type glue between Lua's types and what is effectively C's types.
 
-Lia takes a different approach: instead of separating the high level interpreted runtime and the low level compiled runtime, we compile Lia code into Rust code. That it way it shares the same type system and runtime and enables seamless interoperability between the two languages.
+Lia takes a different approach: instead of separating the high level interpreted runtime and the low level compiled runtime, we compile Lia code into Rust code. That way it shares the same type system and runtime and enables seamless interoperability between the two languages. Lia raises the level of abstraction over Rust by eliminating lifetimes/memory management as well as static typing.
