@@ -102,7 +102,8 @@ Lia takes a different approach: instead of separating the high level interpreted
 
 ## System description
 
-```rust type LiaAny = Rc<RefCell<Rc<RefCell<Box<Any>>>>>;```
+```rust
+type LiaAny = Rc<RefCell<Rc<RefCell<Box<Any>>>>>;```
 
 All values in Lia (integers, closures, etc.) have the type `LiaAny`. We'll walk through the components of the above type to understand Lia's layers of abstraction.
 
