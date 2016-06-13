@@ -15,6 +15,7 @@ use syntax::ext::base::SyntaxExtension;
 #[plugin_registrar]
 pub fn plugin_registrar(reg: &mut Registry) {
     reg.register_macro("lia", plugin::expand_lia);
+    reg.register_macro("_borrow_type", plugin::expand_borrow_type);
     reg.register_syntax_extension(
         intern("lia_impl_glue"),
         SyntaxExtension::MultiModifier(box plugin::impl_glue));

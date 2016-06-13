@@ -49,11 +49,11 @@ fn gen_expr(cx: &mut ExtCtxt, expr: LiaExpr) -> P<Expr> {
                 let s2 = $s2;
                 let s1v = {
                     cast!(let s1v: $ty = s1);
-                    s1v.clone()
+                    s1v
                 };
                 let s2v = {
                     cast!(let s2v: $ty = s2);
-                    s2v.clone()
+                    s2v
                 };
                 alloc($e)
             })

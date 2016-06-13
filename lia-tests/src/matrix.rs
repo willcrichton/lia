@@ -11,12 +11,14 @@ lia! {
     }
 }
 
+#[derive(Clone)]
 struct Matrix {
     data: Vec<i32>,
     rows: i32,
     cols: i32,
 }
 
+#[allow(unused_mut, dead_code)]
 #[lia_impl_glue]
 impl Matrix {
     pub fn new(rows: i32, cols: i32) -> Matrix {
@@ -63,5 +65,5 @@ impl Matrix {
 fn matrix_test() {
     let result: LiaAny = call!(multiply_matrices());
     cast!(let num: i32 = result);
-    assert!(*num == 50);
+    assert!(num == 50);
 }

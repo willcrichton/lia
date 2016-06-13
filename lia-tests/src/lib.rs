@@ -60,13 +60,13 @@ lia! {
 
 fn _lia_external_fun(args: Vec<LiaAny>) -> LiaAny {
     cast!(let num: i32 = args[0].clone());
-    return alloc(*num + 1);
+    return alloc(num + 1);
 }
 
 #[test]
 fn lia_add_test() {
     cast!(let num: i32 = call!(add_test()));
-    assert!(*num == 3);
+    assert!(num == 3);
 }
 
 #[test]
@@ -78,34 +78,34 @@ fn lia_string_test() {
 #[test]
 fn lia_extern_test() {
     cast!(let num: i32 = call!(extern_test()));
-    assert!(*num == 4);
+    assert!(num == 4);
 }
 
 #[test]
 fn lia_by_ref_test() {
     cast!(let num: i32 = call!(by_ref_test()));
-    assert!(*num == 1);
+    assert!(num == 1);
 }
 
 #[test]
 fn lia_by_val_test() {
     cast!(let num: i32 = call!(by_val_test()));
-    assert!(*num == 3);
+    assert!(num == 3);
 }
 
 #[test]
 fn lia_closure_test() {
     cast!(let num: i32 = call!(closure_test()));
-    assert!(*num == 1);
+    assert!(num == 1);
 }
 
 #[test]
 fn lia_fib_test() {
     cast!(let num: i32 = call!(fib_test(10)));
-    assert!(*num == 55);
+    assert!(num == 55);
 }
 
-// TODO: only run this when user does cargo bench?
+// TODO: only run this when user does cargo bench
 // #[bench]
 // fn lia_fib_bench(b: &mut Bencher) {
 //     b.iter(|| call!(fib_test(30)));
@@ -114,5 +114,5 @@ fn lia_fib_test() {
 #[test]
 fn lia_nested_object_test() {
     cast!(let num: i32 = call!(nested_object_test()));
-    assert!(*num == 3);
+    assert!(num == 3);
 }

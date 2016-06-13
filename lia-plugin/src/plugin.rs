@@ -51,6 +51,41 @@ pub fn expand_lia(cx: &mut ExtCtxt, sp: Span, args: &[TokenTree]) ->
     MacEager::items(Svec::many(fs))
 }
 
+#[allow(unused_variables)]
+pub fn expand_borrow_type(cx: &mut ExtCtxt, sp: Span, args: &[TokenTree]) ->
+    Box<MacResult + 'static>
+{
+    use syntax::parse::tts_to_parser;
+
+    let mut parser = tts_to_parser(cx.parse_sess, args.to_vec(), Vec::new());
+    let id = match parser.parse_ident() {
+        Ok(id) => id,
+        Err(_) => panic!("Invalid ident"),
+    };
+
+    let ty = match parser.parse_ty() {
+        Ok(ty) => ty,
+        Err(_) => panic!("Invalid ty"),
+    };
+
+    let expr = match &ty.node {
+        &TyKind::Rptr(_, ref mutty) => {
+            let sub_ty = mutty.ty.clone();
+            quote_expr!(cx, {
+                $id.downcast_mut::<$sub_ty>().unwrap()
+            })
+        },
+        &TyKind::Path(_, ref path) => {
+            quote_expr!(cx, {
+                $id.downcast_mut::<$ty>().unwrap().clone()
+            })
+        },
+        _ => panic!("Type isn't yet supported for casting with Lia"),
+    };
+
+    MacEager::expr(expr)
+}
+
 // Almost identical copy of the one from syntax::ext::expand, copied because
 // their `renames` field is private.
 pub struct IdentRenamer {
@@ -99,32 +134,26 @@ pub fn impl_glue(cx: &mut ExtCtxt, sp: Span, mitem: &MetaItem, item: Annotatable
                                         new_body = renamer.fold_block(new_body);
 
                                         id = new_id;
-                                        impl_ty.clone()
+                                        let ty = impl_ty.clone();
+                                        match sig.explicit_self.node.clone() {
+                                            SelfKind::Region(life, muty, _) => P(Ty {
+                                                id: ty.id,
+                                                span: ty.span,
+                                                node: TyKind::Rptr(life, MutTy {
+                                                    ty: impl_ty.clone(),
+                                                    mutbl: muty,
+                                                })
+                                            }),
+                                            _ => ty
+                                        }
+
                                     } else {
                                         inputs[i].ty.clone()
                                     };
 
-
-                                    let (ty, is_ref) = match ty.clone().node {
-                                        TyKind::Rptr(_, ref mut_ty) => {
-                                            (mut_ty.ty.clone(), true)
-                                        },
-                                        _ => (ty, false)
-                                    };
-
-                                    let cast = if is_ref || is_self {
-                                        quote_stmt!(cx, let mut $id = $id).unwrap()
-                                    } else {
-                                        quote_stmt!(cx, let mut $id = *$id).unwrap()
-                                    };
-
-                                    quote_block!(
-                                        cx,
-                                        {
-                                            cast!(let $id: $ty = args.get($i).expect($s));
-                                            $cast;
-                                        }
-                                        ).unwrap().stmts
+                                    quote_block!(cx, {
+                                        cast!(let $id: $ty = args.get($i).expect($s));
+                                    }).unwrap().stmts
                                 },
                                 _ => panic!("#[lia_impl_glue] only supports methods with no pattern matching in the arguments")
                             });

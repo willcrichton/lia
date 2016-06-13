@@ -14,12 +14,20 @@ pub fn alloc<T: Any>(t: T) -> LiaAny {
 
 #[macro_export]
 macro_rules! cast {
+    (let mut $id:ident : $t:ty = $e:expr) => {
+        let _tmp = $e;
+        let mut _tmp = _tmp.borrow_mut();
+        let mut _tmp = _tmp.borrow_mut();
+        let _tmp = _borrow_type!(_tmp $t);
+        let mut $id = _tmp;
+    };
     (let $id:ident : $t:ty = $e:expr) => {
         let _tmp = $e;
         let mut _tmp = _tmp.borrow_mut();
         let mut _tmp = _tmp.borrow_mut();
-        let $id = _tmp.downcast_mut::<$t>().unwrap();
-    }
+        let _tmp = _borrow_type!(_tmp $t);
+        let $id = _tmp;
+    };
 }
 
 #[macro_export]
@@ -28,7 +36,6 @@ macro_rules! call {
         $id(vec![$( alloc($x) ),*])
     }}
 }
-
 
 macro_rules! lia_print {
     ($arg:ident, $ty:ty) => (
