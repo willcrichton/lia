@@ -115,7 +115,8 @@ A simple implementation of a runtime-managed type could be just `Rc<RefCell<T>>`
 
 ```javascript
 var x = 1;
-x = 2;```
+x = 2;
+```
 
 With the naive implementation, this could compile as:
 
