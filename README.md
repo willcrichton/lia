@@ -1,4 +1,4 @@
-# Lia: A High-Level Language For Rust
+# Lia: A High-Level Language for Rust
 
 > 俩 (liǎ) - 1. two, 2. a pair
 
@@ -158,3 +158,11 @@ The compiler creates the copies by finding variables closed by the Lia closures 
 To make the language dynamically typed, each underlying value in the slots discussed above has type `Box<Any>`. The [`Any`](http://doc.rust-lang.org/stable/std/any/index.html) type represents a value of any possible type, and can be checked/casted at runtime. The `Box<...>` ensures that the type is a fixed size (similar to the OCaml runtime, where each value is the size of a pointer).
 
 Casting in to the generic type is done with `lia::runtime::alloc` that does all the proper allocations. Casting out uses the `cast!` macro. Cast semantics depend on whether the type being casted into is owned or borrowed. The `Any` type from the standard library provides downcast methods that return a reference to the enclosed value when casted correctly. So when casting a `LiaAny` into a reference type, the `cast!` macro just uses the given reference. However, if you want to cast into an owned type, then the referenced value gets cloned. This is because it would be unsafe to take ownership from the Lia runtime, as Lia makes no guarantees on the number of references to a value at any point in time.
+
+## TODO list
+- [] Add JIT for dynamic execution
+- [] Make errors clear on both the Lia level (Spans) and Rust level (code maps?)
+- [] Import remaining language constructs
+  - [] Loops
+  - [] Rest of the binops
+  - [] Modules
