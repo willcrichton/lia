@@ -7,7 +7,6 @@ pub type LiaAny = Rc<RefCell<Rc<RefCell<Box<Any>>>>>;
 pub type LiaObject = HashMap<String, LiaAny>;
 pub type LiaClosure = Box<Fn(Vec<LiaAny>) -> LiaAny>;
 
-
 pub fn alloc<T: Any>(t: T) -> LiaAny {
     Rc::new(RefCell::new(Rc::new(RefCell::new(Box::new(t)))))
 }
@@ -49,7 +48,7 @@ macro_rules! lia_print {
 macro_rules! lia_print_iter {
     ($arg:ident, $( $ty:ty ),*) => {{
         let mut printed = false;
-        $( if lia_print!($arg, $ty) { printed = true; } )*;
+        $( printed = printed || lia_print!($arg, $ty);)*;
         printed
     }}
 }

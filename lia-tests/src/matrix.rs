@@ -50,10 +50,9 @@ impl Matrix {
             for j in 0..other.cols {
                 let mut dot = 0;
                 for k in 0..self.cols {
-                    dot += self.data[(i * self.cols + k) as usize] *
-                        other.data[(k * other.cols + j) as usize];
+                    dot += self.get(i, k) * other.get(k, j);
                 }
-                new_mat.data[(i * new_mat.cols + j) as usize] = dot;
+                new_mat.set(i, j, dot);
             }
         }
 

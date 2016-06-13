@@ -3,7 +3,6 @@ name = "lia-tests"
 version = "0.1.0"
 dependencies = [
  "lia 0.1.0",
- "lia-macros 0.1.0",
  "lia-plugin 0.1.0",
 ]
 
@@ -131,10 +130,6 @@ dependencies = [
  "lalrpop 0.11.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "lalrpop-util 0.11.0 (registry+https://github.com/rust-lang/crates.io-index)",
 ]
-
-[[package]]
-name = "lia-macros"
-version = "0.1.0"
 
 [[package]]
 name = "lia-plugin"
