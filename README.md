@@ -1,6 +1,6 @@
 # Lia: A High-Level Language For Rust
 
-> 俩 (liǎ) - two, both
+> 俩 (liǎ) - 1. two, 2. a pair
 
 Lia is a programming language that enables expressive programming and rapid prototyping by eliminating memory management/lifetimes and static typing. Lia compiles down into Rust code, so it seamlessly interoperates with Rust libraries. This enables Lia users to drop down into efficient Rust code when necessary, but work with a high-level Javascript-esque language for the majority of their application. For example, binding to a matrix library (à la numpy) is simple:
 
