@@ -40,6 +40,8 @@ fn gen_expr(cx: &mut ExtCtxt, expr: LiaExpr) -> P<Expr> {
                     (quote_expr!(cx, s1v == s2v), quote_ty!(cx, i32)),
                 RsToken::Le =>
                     (quote_expr!(cx, s1v <= s2v), quote_ty!(cx, i32)),
+                RsToken::Lt =>
+                    (quote_expr!(cx, s1v < s2v), quote_ty!(cx, i32)),
                 _ => panic!("Binop `{:?}` not yet implemented", op)
             };
             // Have to clone s1v and s2v because if s1 is the same variable
@@ -245,21 +247,31 @@ fn gen_stmt(cx: &mut ExtCtxt, stmt: LiaStmt) -> Vec<Stmt> {
         LiaStmt::If(cond, body) => {
             let e = gen_expr(cx, cond);
             let st: Vec<Stmt> = body.into_iter().flat_map(|stmt| gen_stmt(cx, stmt)).collect();
-            vec![quote_stmt!(
-                cx,
-                {
-                    let e = $e;
-                    let _tmp = e.borrow_mut();
-                    let cond = _tmp.borrow_mut();
-                    let b = if cond.is::<bool>() {
+            vec![quote_stmt!(cx, {
+                let e = $e;
+                let _tmp = e.borrow_mut();
+                let cond = _tmp.borrow_mut();
+                let b = if cond.is::<bool>() {
                         *cond.downcast_ref::<bool>().unwrap()
-                    } else if cond.is::<i32>() {
-                        let n = *cond.downcast_ref::<i32>().unwrap();
+                } else if cond.is::<i32>() {
+                    let n = *cond.downcast_ref::<i32>().unwrap();
                         n != 0
-                    } else { !cond.is::<()>() };
-                    if b { $st; }
-                }).expect("Invalid if stmt")]
-        }
+                } else { !cond.is::<()>() };
+                if b { $st; }
+            }).expect("Invalid if stmt")]
+        },
+        LiaStmt::While(guard, body) => {
+            let guard = gen_expr(cx, guard);
+            let body: Vec<Stmt> =
+                body.into_iter().flat_map(|stmt| gen_stmt(cx, stmt)).collect();
+            vec![quote_stmt!(cx, {
+                while {
+                    let e = $guard;
+                    cast!(let b: bool = e);
+                    b
+                } { $body; }
+            }).expect("Invalid while stmt")]
+        },
     }
 }
 

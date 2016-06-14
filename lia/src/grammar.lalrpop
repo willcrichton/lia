@@ -16,6 +16,7 @@ extern {
        EqEq => LiaToken::RustToken(RsToken::EqEq),
        Ge => LiaToken::RustToken(RsToken::Ge),
        Le => LiaToken::RustToken(RsToken::Le),
+       Lt => LiaToken::RustToken(RsToken::Lt),
        Semi => LiaToken::RustToken(RsToken::Semi),
        Comma => LiaToken::RustToken(RsToken::Comma),
        Colon => LiaToken::RustToken(RsToken::Colon),
@@ -32,6 +33,7 @@ extern {
        Function => LiaToken::Function,
        Return => LiaToken::Return,
        For => LiaToken::For,
+       While => LiaToken::While,
        If => LiaToken::If,
     }
 }
@@ -56,19 +58,40 @@ block: Vec<LiaStmt> = {
     Lbrace <s:stmt_list> Rbrace => s
 };
 
+assign: Vec<LiaStmt> = {
+    Var <id:Ident> Eq <e:expr> =>
+        vec![LiaStmt::Declare(id), LiaStmt::Assign(LiaExpr::Var(id), e)],
+    <lhs:expr> Eq <rhs:expr> => vec![LiaStmt::Assign(lhs, rhs)],
+};
+
 stmt: Vec<LiaStmt> = {
     <e:expr> Semi => vec![LiaStmt::Expr(e)],
-    Var <id:Ident> Eq <e:expr> Semi => vec![LiaStmt::Declare(id),
-                                            LiaStmt::Assign(LiaExpr::Var(id), e)],
-    <lhs:expr> Eq <rhs:expr> Semi => vec![LiaStmt::Assign(lhs, rhs)],
+    <a:assign> Semi => a,
     Return <e:expr> Semi => vec![LiaStmt::Return(e)],
     If Lparen <e:expr> Rparen <s:block> => vec![LiaStmt::If(e, s)],
+    While Lparen <guard:expr> Rparen <body:block> => vec![LiaStmt::While(guard, body)],
+    For Lparen <init:assign> Semi <guard:expr> Semi <incr:assign> Rparen <body:block> => {
+        let mut init = init;
+        let mut body = body;
+        let mut incr = incr;
+        body.append(&mut incr);
+        init.push(LiaStmt::While(guard, body));
+        init
+    }
+};
+
+Binop<T>: LiaExpr = {
+    <e1:expr> <t:T> <e2:atom> => match t {
+        LiaToken::RustToken(t) => LiaExpr::BinOp(t, Box::new(e1), Box::new(e2)),
+        _ => unreachable!(),
+    }
 };
 
 expr: LiaExpr = {
     <e1:expr> <op:Op> <e2:atom> => LiaExpr::BinOp(RsToken::BinOp(op), Box::new(e1), Box::new(e2)),
-    <e1:expr> EqEq <e2:atom> => LiaExpr::BinOp(RsToken::EqEq, Box::new(e1), Box::new(e2)),
-    <e1:expr> Le <e2:atom> => LiaExpr::BinOp(RsToken::Le, Box::new(e1), Box::new(e2)),
+    Binop<EqEq>,
+    Binop<Le>,
+    Binop<Lt>,
     atom
 };
 

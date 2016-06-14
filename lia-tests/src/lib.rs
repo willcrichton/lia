@@ -56,6 +56,20 @@ lia! {
         var x = {foo: {bar: 3}};
         return x.foo.bar;
     }
+
+    function while_test() {
+        var x = 0;
+        while (x < 10) {
+            x = x + 1;
+        }
+        return x;
+    }
+
+    function for_test() {
+        for (var x = 0; x < 10; x = x + 1) {}
+        return x;
+    }
+
 }
 
 fn _lia_external_fun(args: Vec<LiaAny>) -> LiaAny {
@@ -115,4 +129,16 @@ fn lia_fib_test() {
 fn lia_nested_object_test() {
     cast!(let num: i32 = call!(nested_object_test()));
     assert!(num == 3);
+}
+
+#[test]
+fn lia_while_test() {
+    cast!(let num: i32 = call!(while_test()));
+    assert!(num == 10);
+}
+
+#[test]
+fn lia_for_test() {
+    cast!(let num: i32 = call!(for_test()));
+    assert!(num == 10);
 }
