@@ -197,12 +197,12 @@ pub fn impl_glue(cx: &mut ExtCtxt, sp: Span, mitem: &MetaItem, item: Annotatable
                     impl_ty.clone(), new_items);
                 Annotatable::Item(cx.item(sp, it.ident, it.attrs.clone(), newimpl))
             } else {
-                cx.span_err(sp, "i pooped myself: excuse me my baby?");
+                cx.span_err(sp, "#[lia_impl_glue] must annotate an impl block");
                 item.clone()
             }
         },
         _ => {
-            cx.span_err(sp, "m&ms");
+            cx.span_err(sp, "#[lia_impl_glue] must annotate an item");
             item
         }
     }
