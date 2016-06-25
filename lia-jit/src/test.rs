@@ -1,69 +1,69 @@
+#![feature(plugin, rustc_private, box_syntax)]
 
+extern crate rustc;
+extern crate rustc_driver;
+extern crate rustc_llvm;
+#[macro_use] extern crate syntax;
+extern crate getopts;
 
-#[test]
-fn compile_test() {
-    use std::path::PathBuf;
-    use std::rc::Rc;
+use rustc_driver::{CompilerCalls, Compilation};
+use rustc_driver::driver::CompileController;
+use rustc::session::Session;
+use syntax::codemap::FileLoader;
+use std::io;
+use std::path::{PathBuf, Path};
+use rustc::util::common::path2cstr;
 
-    use rustc;
-    use rustc::session::build_session;
-    use rustc::session::config::{self, basic_options, Input};
-    use rustc::dep_graph::DepGraph;
-    use rustc_llvm;
-    use rustc_lint;
-    use rustc_driver::{RustcDefaultCalls, CompilerCalls, diagnostics_registry, handle_options};
-    use rustc_driver::target_features;
-    use rustc_driver::driver::compile_input;
-    use rustc_driver::Compilation;
-    use rustc_metadata::cstore::CStore;
+struct JitLoader;
 
-    use syntax::parse::token;
-    use syntax::diagnostics::registry::Registry;
-
-    let sysroot = PathBuf::from("/Users/will/.multirust/toolchains/nightly-x86_64-apple-darwin");
-
-    let input = Input::Str {
-        name: "<jit>".to_string(),
-        input: r#"
+impl FileLoader for JitLoader {
+    fn file_exists(&self, _: &Path) -> bool { true }
+    fn abs_path(&self, _: &Path) -> Option<PathBuf> { None }
+    fn read_file(&self, _: &Path) -> io::Result<String> {
+        Ok(r#"
 #[no_mangle]
 pub fn test_add(a: i32, b: i32) -> i32 { a + b }
-"#.to_string()
-    };
+"#.to_string())
+    }
+}
 
-    let matches = handle_options(&["rustc".into(), "foo.rs".into(), "--emit".into(), "llvm-ir".into()]).unwrap();
-    let mut callbacks = RustcDefaultCalls;
+#[derive(Copy, Clone)]
+struct JitCalls;
 
-    let mut sopts = basic_options();
-    sopts.maybe_sysroot = Some(sysroot);
-    sopts.optimize = config::OptLevel::No;
-    sopts.crate_types = vec![config::CrateTypeDylib];
+impl<'a> CompilerCalls<'a> for JitCalls {
+    fn build_controller(&mut self,
+                        _: &Session,
+                        _: &getopts::Matches)
+                        -> CompileController<'a> {
+        let mut cc = CompileController::basic();
+        cc.after_llvm.stop = Compilation::Stop;
+        cc.after_llvm.run_callback_on_error = true;
+        cc.after_llvm.callback = Box::new(|state| {
+            state.session.abort_if_errors();
+            let trans = state.trans.unwrap();
+            assert_eq!(trans.modules.len(), 1);
+            let rs_llmod = trans.modules[0].llmod;
+            assert!(!rs_llmod.is_null());
 
-    let descriptions = diagnostics_registry();
+            unsafe {
+                let cpm = rustc_llvm::LLVMCreatePassManager();
+                let path = path2cstr(Path::new("test.ll"));
+                rustc_llvm::LLVMRustPrintModule(cpm, rs_llmod, path.as_ptr());
+            }
+        });
+        cc
+    }
+}
 
-    callbacks
-        .early_callback(&matches, &sopts, &descriptions, sopts.error_format);
+fn main() {
+    use rustc_driver;
+    let args: Vec<String> =
+        "_ _ --sysroot /Users/will/.multirust/toolchains/nightly-x86_64-apple-darwin --crate-type dylib"
+        .split(' ').map(|s| s.to_string()).collect();
 
-    let dep_graph = DepGraph::new(sopts.build_dep_graph());
-    let cstore = Rc::new(CStore::new(&dep_graph, token::get_ident_interner()));
-    let sess = build_session(
-        sopts, &dep_graph, None, Registry::new(&rustc::DIAGNOSTICS), cstore.clone());
-    rustc_lint::register_builtins(&mut sess.lint_store.borrow_mut(), Some(&sess));
-    let mut cfg = config::build_configuration(&sess);
-    target_features::add_configuration(&mut cfg, &sess);
-
-    callbacks
-        .late_callback(&matches, &sess, &input, &None, &None);
-
-    let mut cc = callbacks.build_controller(&sess, &matches);
-    cc.after_llvm.stop = Compilation::Stop;
-    cc.after_llvm.run_callback_on_error = true;
-    cc.after_llvm.callback = Box::new(|state| {
-        state.session.abort_if_errors();
-        let trans = state.trans.unwrap();
-        assert_eq!(trans.modules.len(), 1);
-        let rs_llmod = trans.modules[0].llmod;
-        //unsafe { rustc_llvm::LLVMDumpModule(rs_llmod) };
-    });
-
-    compile_input(&sess, &cstore, cfg, &input, &None, &None, None, &cc).unwrap();
+    let (result, _) = rustc_driver::run_compiler_with_file_loader(
+        &args, &mut JitCalls, box JitLoader);
+    if let Err(n) = result {
+        println!("Error {}", n);
+    }
 }
