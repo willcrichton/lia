@@ -5,14 +5,6 @@
 Lia is a programming language that enables expressive programming and rapid prototyping by eliminating memory management/lifetimes and static typing. Lia compiles down into Rust code, so it seamlessly interoperates with Rust libraries. This enables Lia users to drop down into efficient Rust code when necessary, but work with a high-level Javascript-esque language for the majority of their application. For example, binding to a matrix library (à la numpy) is simple:
 
 ```rust
-#![feature(plugin, box_syntax)]
-#![plugin(lia_plugin)]
-
-#[macro_use]
-extern crate lia;
-
-use lia::runtime::*;
-
 // lia! declares a set of Lia functions. It is a procedural macro that compiles Lia into Rust.
 lia! {
     function multiply_matrices() {

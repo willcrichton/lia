@@ -1,4 +1,4 @@
-use syntax::codemap::{Span, Spanned};
+use syntax::codemap::Span;
 use syntax::parse::token::Token;
 use syntax::ast::*;
 use syntax::ext::base::{ExtCtxt, MacResult, MacEager, Annotatable};
@@ -135,8 +135,8 @@ pub fn impl_glue(cx: &mut ExtCtxt, sp: Span, mitem: &MetaItem, item: Annotatable
 
                                         id = new_id;
                                         let ty = impl_ty.clone();
-                                        match sig.explicit_self.node.clone() {
-                                            SelfKind::Region(life, muty, _) => P(Ty {
+                                        match sig.decl.get_self().unwrap().node.clone() {
+                                            SelfKind::Region(life, muty) => P(Ty {
                                                 id: ty.id,
                                                 span: ty.span,
                                                 node: TyKind::Rptr(life, MutTy {
@@ -171,6 +171,8 @@ pub fn impl_glue(cx: &mut ExtCtxt, sp: Span, mitem: &MetaItem, item: Annotatable
                                             generics, block)
                             = fun.node.clone()
                         {
+                            let mut new_decl = decl.clone().unwrap();
+                            new_decl.inputs.remove(0);
                             let mut new_item = impl_item.clone();
                             new_item.ident = prefix_ident(&new_item.ident, "_lia_");
                             new_item.node =
@@ -178,12 +180,8 @@ pub fn impl_glue(cx: &mut ExtCtxt, sp: Span, mitem: &MetaItem, item: Annotatable
                                     unsafety: unsafety,
                                     constness: constness,
                                     abi: abi,
-                                    decl: decl,
+                                    decl: P(new_decl),
                                     generics: generics,
-                                    explicit_self: Spanned {
-                                        node: SelfKind::Static,
-                                        span: fun.span,
-                                    },
                                 }, block);
                             items.push(new_item);
                         } else {

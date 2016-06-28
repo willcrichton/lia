@@ -5,4 +5,8 @@ lia/src/grammar.rs
 lia-plugin/Cargo.lock
 lia-plugin/target
 
+lia-tests/Cargo.lock
 lia-tests/target
+
+lia-jit/Cargo.lock
+lia-jit/target
