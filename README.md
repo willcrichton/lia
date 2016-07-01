@@ -2,12 +2,13 @@
 
 > 俩 (liǎ) - 1. two, 2. a pair
 
-Lia is a programming language that enables expressive programming and rapid prototyping by eliminating memory management/lifetimes and static typing. Lia compiles down into Rust code, so it seamlessly interoperates with Rust libraries. This enables Lia users to drop down into efficient Rust code when necessary, but work with a high-level Javascript-esque language for the majority of their application. For example, binding to a matrix library (à la numpy) is simple:
+Lia is a dynamically typed and garbage collected programming language that seamlessly interopates with Rust by using Rust as a compile target. This enables Lia users to drop down into efficient Rust code when necessary, but work with a high-level Javascript-esque language for the majority of their application. For example, binding to a matrix library (à la numpy) is simple:
 
 ```rust
 // lia! declares a set of Lia functions. It is a procedural macro that compiles Lia into Rust.
 lia! {
     function multiply_matrices() {
+        console.log("Multiplying matrices");
         var x = @Matrix::from_list([[4, 3], [2, 1]]); // The @ means a foreign (Rust) function
         var y = @Matrix::from_list([[1, 2], [3, 4]]);
         var z = @Matrix::multiply(x, y);

@@ -1,9 +1,9 @@
 use syntax::codemap::Span;
 use syntax::parse::token::Token;
+use syntax::parse::token;
 use syntax::ast::*;
 use syntax::ext::base::{ExtCtxt, MacResult, MacEager, Annotatable};
 use syntax::ext::build::AstBuilder;
-use syntax::ext::mtwt;
 use syntax::fold;
 use syntax::fold::Folder;
 use syntax::util::small_vector::SmallVector as Svec;
@@ -86,16 +86,19 @@ pub fn expand_borrow_type(cx: &mut ExtCtxt, sp: Span, args: &[TokenTree]) ->
     MacEager::expr(expr)
 }
 
-// Almost identical copy of the one from syntax::ext::expand, copied because
-// their `renames` field is private.
-pub struct IdentRenamer {
-    renames: mtwt::RenameList,
+struct SelfRenamer {
+    id: Ident
 }
 
-impl Folder for IdentRenamer {
+impl Folder for SelfRenamer {
     fn fold_ident(&mut self, id: Ident) -> Ident {
-        Ident::new(id.name, mtwt::apply_renames(&self.renames, id.ctxt))
+        if id.name.as_str() == "self" {
+            self.id
+        } else {
+            id
+        }
     }
+
     fn fold_mac(&mut self, mac: Mac) -> Mac {
         fold::noop_fold_mac(mac, self)
     }
@@ -116,21 +119,17 @@ pub fn impl_glue(cx: &mut ExtCtxt, sp: Span, mitem: &MetaItem, item: Annotatable
                     if let ImplItemKind::Method(ref sig, ref body) = impl_item.node {
                         let ref inputs = sig.decl.inputs;
                         let mut binds = vec![];
-
                         let mut new_body = body.clone();
 
                         for i in 0..inputs.len() {
                             let s = format!("Arg {}", i);
-                            binds.push(match &inputs[i].pat.node {
+                            let bind = match &inputs[i].pat.node {
                                 &PatKind::Ident(_, ref ident, _) => {
                                     let mut id = ident.node;
                                     let is_self = id.name.as_str() == "self";
                                     let ty = if is_self {
-                                        let new_id = prefix_ident(&id, "_lia_");
-                                        let rename = (id.clone(), new_id.name);
-                                        let mut renamer = IdentRenamer {
-                                            renames: vec![rename]
-                                        };
+                                        let new_id = token::str_to_ident("_lia_self");
+                                        let mut renamer = SelfRenamer {id: new_id};
                                         new_body = renamer.fold_block(new_body);
 
                                         id = new_id;
@@ -146,7 +145,6 @@ pub fn impl_glue(cx: &mut ExtCtxt, sp: Span, mitem: &MetaItem, item: Annotatable
                                             }),
                                             _ => ty
                                         }
-
                                     } else {
                                         inputs[i].ty.clone()
                                     };
@@ -156,8 +154,10 @@ pub fn impl_glue(cx: &mut ExtCtxt, sp: Span, mitem: &MetaItem, item: Annotatable
                                     }).unwrap().stmts
                                 },
                                 _ => panic!("#[lia_impl_glue] only supports methods with no pattern matching in the arguments")
-                            });
+                            };
+                            binds.push(bind);
                         }
+
                         let binds: Vec<Stmt> = binds.into_iter().flat_map(|e| e).collect();
                         // TODO: attrs for ignoring warnings on fun?
                         let fun =
@@ -171,8 +171,7 @@ pub fn impl_glue(cx: &mut ExtCtxt, sp: Span, mitem: &MetaItem, item: Annotatable
                                             generics, block)
                             = fun.node.clone()
                         {
-                            let mut new_decl = decl.clone().unwrap();
-                            new_decl.inputs.remove(0);
+                            let new_decl = decl.clone().unwrap();
                             let mut new_item = impl_item.clone();
                             new_item.ident = prefix_ident(&new_item.ident, "_lia_");
                             new_item.node =

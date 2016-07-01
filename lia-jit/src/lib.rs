@@ -60,7 +60,7 @@ struct JitState<'a> {
 static EVAL_FN: &'static str = "_jit_eval";
 
 impl<'a> JitState<'a> {
-    fn process_llvm(&self, llmod: &mut llvm::Module) {
+    fn process_llvm(&self, llmod: &llvm::CSemiBox<'a, llvm::Module>) {
         use llvm::*;
         let fun = llmod.get_function(self.name.as_str())
             .expect(format!("LLVM global `{}` missing", self.name).as_str());
@@ -200,46 +200,25 @@ impl<'a> CompilerCalls<'a> for Jit<'a> {
 
             let llmod: &mut llvm::Module =
                 (rs_llmod as llvm_sys::prelude::LLVMModuleRef).into();
+            let llmod = llmod.clone();
             //llmod.verify().expect("Module invalid");
 
             let mut state = jit_state.borrow_mut();
-
-            use llvm::*;
-            use llvm::Attribute::*;
-            let mut module = Module::new("simple", &state.ctx);
-            {
-                let func = module.add_function("fib", Type::get::<fn(u64) -> u64>(&state.ctx));
-                func.add_attributes(&[NoUnwind, ReadNone]);
-                let value = &func[0];
-                let entry = func.append("entry");
-                let on_zero = func.append("on_zero");
-                let on_one = func.append("on_one");
-                let default = func.append("default");
-                let builder = Builder::new(&state.ctx);
-                let zero = 0u64.compile(&state.ctx);
-                let one = 1u64.compile(&state.ctx);
-                builder.position_at_end(entry);
-                builder.build_switch(value, default, &[
-                    (zero, on_zero),
-                    (one, on_one)
-                        ]);
-                builder.position_at_end(on_zero);
-                builder.build_ret(zero);
-                builder.position_at_end(on_one);
-                builder.build_ret(one);
-                builder.position_at_end(default);
-                let two = 2u64.compile(&state.ctx);
-                let a = builder.build_sub(value, one);
-                let b = builder.build_sub(value, two);
-                let fa = builder.build_tail_call(func, &[a]);
-                let fb = builder.build_tail_call(func, &[b]);
-                builder.build_ret(builder.build_add(fa, fb));
-            }
-
-            state.process_llvm(&mut *module);
-            state.other_modules.push(module);
+            state.process_llvm(&llmod);
+            state.other_modules.push(llmod);
         });
         cc
+    }
+}
+
+#[macro_export]
+macro_rules! make_context {
+    ($id:ident) => {
+        let $id = {
+            use llvm::Context;
+            Context::new()
+        };
+        let $id = $id.as_semi();
     }
 }
 
@@ -254,9 +233,7 @@ mod test {
         ($fun:ident, $s:expr) => {
             #[test]
             fn $fun() {
-                use llvm::Context;
-                let ctx = Context::new();
-                let ctx = ctx.as_semi();
+                make_context!(ctx);
                 let mut jit = Jit::new(ctx, JitOptions { sysroot: SYSROOT.to_string() });
                 let input = $s.to_string();
                 jit.run(input);
@@ -264,7 +241,6 @@ mod test {
         }
     }
 
-    make_test!(fib_test, r#"#[no_mangle] pub fn fib(n: i32) -> i32 { n }"#);
     make_test!(compile_test, r#"#[no_mangle] pub fn test_add(a: i32, b: i32) -> i32 { a + b }"#);
     make_test!(expr_test, "1 + 2");
 }

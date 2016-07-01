@@ -1,21 +1,19 @@
 #![feature(rustc_private)]
 
 extern crate getopts;
-extern crate lia_jit;
 extern crate llvm;
+#[macro_use] extern crate lia_jit;
 
 fn repl(matches: getopts::Matches) {
     use std::io::{stdin, stdout, Write};
     use lia_jit::{Jit, JitOptions};
-    use llvm::Context;
 
     if !matches.free.is_empty() {
         panic!("Need to handle input files");
     }
 
     let sysroot = "/Users/will/.multirust/toolchains/nightly-x86_64-apple-darwin".to_string();
-    let ctx = Context::new();
-    let ctx = ctx.as_semi();
+    make_context!(ctx);
     let mut jit = Jit::new(ctx, JitOptions { sysroot: sysroot });
 
     loop {

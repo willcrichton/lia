@@ -1,5 +1,5 @@
 use std::collections::{HashMap, HashSet};
-use syntax::parse::token::{Token, BinOpToken, intern};
+use syntax::parse::token::{Token, BinOpToken, str_to_ident};
 use syntax::ast::Ident;
 
 #[derive(Debug, Clone)]
@@ -34,7 +34,7 @@ pub struct LiaFn {
 }
 
 pub fn prefix_ident(id: &Ident, prefix: &str) -> Ident {
-    Ident::with_empty_ctxt(intern(format!("{}{}", prefix, id.name.as_str()).as_str()))
+    str_to_ident(format!("{}{}", prefix, id.name.as_str()).as_str())
 }
 
 fn get_mapping(mapping: &mut HashMap<Ident, Ident>, id: &Ident) -> Ident {

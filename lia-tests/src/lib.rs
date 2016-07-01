@@ -8,6 +8,7 @@ extern crate test;
 mod matrix;
 
 use lia::runtime::*;
+
 use test::Bencher;
 
 lia! {
@@ -69,7 +70,6 @@ lia! {
         for (var x = 0; x < 10; x = x + 1) {}
         return x;
     }
-
 }
 
 fn _lia_external_fun(args: Vec<LiaAny>) -> LiaAny {
