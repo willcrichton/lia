@@ -68,16 +68,17 @@ pub fn expand_borrow_type(cx: &mut ExtCtxt, sp: Span, args: &[TokenTree]) ->
         Err(_) => panic!("Invalid ty"),
     };
 
+    let ty_str = format!("Invalid cast to {:?}", ty);
     let expr = match &ty.node {
         &TyKind::Rptr(_, ref mutty) => {
             let sub_ty = mutty.ty.clone();
             quote_expr!(cx, {
-                $id.downcast_mut::<$sub_ty>().unwrap()
+                $id.downcast_mut::<$sub_ty>().expect($ty_str)
             })
         },
         &TyKind::Path(_, ref path) => {
             quote_expr!(cx, {
-                $id.downcast_mut::<$ty>().unwrap().clone()
+                $id.downcast_mut::<$ty>().expect($ty_str).clone()
             })
         },
         _ => panic!("Type isn't yet supported for casting with Lia"),

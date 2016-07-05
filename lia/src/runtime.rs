@@ -11,6 +11,11 @@ pub fn alloc<T: Any>(t: T) -> LiaAny {
     Rc::new(RefCell::new(Rc::new(RefCell::new(Box::new(t)))))
 }
 
+pub fn new_obj() -> LiaObject {
+    let obj: LiaObject = HashMap::new();
+    obj
+}
+
 #[macro_export]
 macro_rules! cast {
     (let mut $id:ident : $t:ty = $e:expr) => {
@@ -32,7 +37,7 @@ macro_rules! cast {
 #[macro_export]
 macro_rules! call {
     ($id:ident ( $( $x:expr ),* )) => {{
-        $id(vec![$( alloc($x) ),*])
+        $id(vec![alloc(new_obj()), $( alloc($x) ),*])
     }}
 }
 

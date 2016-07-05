@@ -70,6 +70,8 @@ stmt: Vec<LiaStmt> = {
     Return <e:expr> Semi => vec![LiaStmt::Return(e)],
     If Lparen <e:expr> Rparen <s:block> => vec![LiaStmt::If(e, s)],
     While Lparen <guard:expr> Rparen <body:block> => vec![LiaStmt::While(guard, body)],
+    For Lparen Var <id:Ident> Colon <iterable:expr> Rparen <body:block> =>
+        vec![LiaStmt::ForObj(id, iterable, body)],
     For Lparen <init:assign> Semi <guard:expr> Semi <incr:assign> Rparen <body:block> => {
         let mut init = init;
         let mut body = body;

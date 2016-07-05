@@ -1,7 +1,7 @@
 use syntax::codemap::{Span, ExpnId, BytePos, Pos};
 use syntax::ext::base::ExtCtxt;
 use syntax::ast::{Expr, Stmt, Item, Path, Ident, PathSegment, PathParameters};
-use syntax::parse::token::{Token as RsToken, BinOpToken};
+use syntax::parse::token::{Token as RsToken, BinOpToken, str_to_ident};
 use syntax::ptr::P;
 
 use ast::{LiaExpr, LiaStmt, LiaFn, prefix_ident};
@@ -95,8 +95,7 @@ fn gen_expr(cx: &mut ExtCtxt, expr: LiaExpr) -> P<Expr> {
                 })
             }).collect();
             quote_expr!(cx, {
-                use std::collections::HashMap;
-                let mut ht: LiaObject = HashMap::new();
+                let mut ht= new_obj();
                 $kvs;
                 alloc(ht)
             })
@@ -131,7 +130,7 @@ fn gen_expr(cx: &mut ExtCtxt, expr: LiaExpr) -> P<Expr> {
             gen_expr(cx, LiaExpr::Object(kvs))
         },
         LiaExpr::Call(box fun, exprs) => {
-            let exps: Vec<P<Expr>> =
+            let mut exps: Vec<P<Expr>> =
                 exprs.into_iter().map(|expr| {
                     let expr = gen_expr(cx, expr);
                     quote_expr!(cx, {args.push($expr)})
@@ -142,7 +141,7 @@ fn gen_expr(cx: &mut ExtCtxt, expr: LiaExpr) -> P<Expr> {
                     quote_expr!(cx, $new_id(args))
                 },
                 _ => {
-                    let f = gen_expr(cx, fun);
+                    let f = gen_expr(cx, fun.clone());
                     // Can't borrow_mut as this breaks recursive functions
                     quote_expr!(cx, {
                         let e = $f;
@@ -153,14 +152,28 @@ fn gen_expr(cx: &mut ExtCtxt, expr: LiaExpr) -> P<Expr> {
                 }
             };
 
+            match fun.clone() {
+                LiaExpr::Index(box context, _) => {
+                    let expr = gen_expr(cx, context);
+                    exps.insert(0, quote_expr!(cx, {args.push($expr)}));
+                },
+                LiaExpr::RsVar(_) => {},
+                _ => {
+                    exps.insert(0, quote_expr!(cx, {args.push({
+                        alloc(new_obj())
+                    })}));
+                }
+            };
+
             quote_expr!(cx, {
                 let mut args = Vec::new();
                 $exps
                 $call
             })
         },
-        LiaExpr::Closure(args, stmts) => {
+        LiaExpr::Closure(mut args, stmts) => {
             use std::collections::{HashMap, HashSet};
+            args.push(str_to_ident("this"));
             let mut copies = Vec::new();
             let stmts = {
                 let mut bound = HashSet::new();
@@ -272,13 +285,33 @@ fn gen_stmt(cx: &mut ExtCtxt, stmt: LiaStmt) -> Vec<Stmt> {
                 } { $body; }
             }).expect("Invalid while stmt")]
         },
+        LiaStmt::ForObj(id, expr, body) => {
+            let expr = gen_expr(cx, expr);
+            let body: Vec<Stmt> =
+                body.into_iter().flat_map(|stmt| gen_stmt(cx, stmt)).collect();
+            vec![quote_stmt!(cx, {
+                {
+                    let e = $expr;
+                    let keys = {
+                        cast!(let obj: LiaObject = e);
+                        let keys: Vec<String> = obj.keys().map(|s| s.clone()).collect();
+                        keys
+                    };
+                    for $id in keys {
+                        let $id = alloc($id);
+                        $body;
+                    }
+                }
+            }).expect("Invalid for stmt")]
+        }
     }
 }
 
-pub fn gen_fn(cx: &mut ExtCtxt, fun: LiaFn) -> P<Item> {
+pub fn gen_fn(cx: &mut ExtCtxt, mut fun: LiaFn) -> P<Item> {
     let st: Vec<Stmt> = fun.body.into_iter().flat_map(|stmt| gen_stmt(cx, stmt)).collect();
     let id = fun.name;
     let mut binds = vec![];
+    fun.args.insert(0, str_to_ident("this"));
     for i in 0..fun.args.len() {
         let arg_id = fun.args[i];
         let s = format!("Arg {}", i);

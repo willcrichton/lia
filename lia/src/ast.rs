@@ -24,6 +24,7 @@ pub enum LiaStmt {
     Expr(LiaExpr),
     If(LiaExpr, Vec<LiaStmt>),
     While(LiaExpr, Vec<LiaStmt>),
+    ForObj(Ident, LiaExpr, Vec<LiaStmt>),
 }
 
 #[derive(Debug, Clone)]
@@ -121,6 +122,14 @@ impl LiaStmt {
                 for s in body.iter_mut() {
                     s.remap_free_vars_aux(bound, mapping);
                 }
+            }
+            &mut ForObj(ref mut id, ref mut expr, ref mut body) => {
+                bound.insert(id.clone());
+                expr.remap_free_vars(bound, mapping);
+                for s in body.iter_mut() {
+                    s.remap_free_vars_aux(bound, mapping);
+                }
+
             }
         }
     }
