@@ -103,23 +103,17 @@ fn gen_expr(cx: &mut ExtCtxt, expr: LiaExpr) -> P<Expr> {
         LiaExpr::Index(box obj, box key) => {
             let obj = gen_expr(cx, obj);
             let key = gen_expr(cx, key);
+            // Must get key before object to avoid conflicting borrows, i.e. x[x.y]
             quote_expr!(cx, {
+                let key = $key;
+                let s = val_to_key(key);
+
                 let obj = $obj;
                 let mut _tmp = obj.borrow_mut();
                 let mut _tmp = _tmp.borrow_mut();
                 let mut ht = _tmp.downcast_mut::<LiaObject>().expect("Can only index into objects");
-                let key = $key;
-                let _tmp = key.borrow();
-                let key = _tmp.borrow();
-                let s = if key.is::<i32>() {
-                    format!("{}", key.downcast_ref::<i32>().unwrap())
-                } else {
-                    key.downcast_ref::<String>().expect("Object key must be string or int").clone()
-                };
-                match ht.get(&s) {
-                    Some(val) => val.clone(),
-                    None => panic!("Invalid key {}", s),
-                }
+                fn make_null() -> LiaAny { alloc(LiaNull) }
+                (*ht.entry(s).or_insert_with(make_null)).clone()
             })
         },
         LiaExpr::Array(exprs) => {
@@ -135,6 +129,7 @@ fn gen_expr(cx: &mut ExtCtxt, expr: LiaExpr) -> P<Expr> {
                     let expr = gen_expr(cx, expr);
                     quote_expr!(cx, {args.push($expr)})
                 }).collect();
+
             let call = match fun.clone() {
                 LiaExpr::RsVar(id) => {
                     let new_id = rs_ident_to_path(id);
@@ -157,7 +152,6 @@ fn gen_expr(cx: &mut ExtCtxt, expr: LiaExpr) -> P<Expr> {
                     let expr = gen_expr(cx, context);
                     exps.insert(0, quote_expr!(cx, {args.push($expr)}));
                 },
-                LiaExpr::RsVar(_) => {},
                 _ => {
                     exps.insert(0, quote_expr!(cx, {args.push({
                         alloc(new_obj())
@@ -173,7 +167,7 @@ fn gen_expr(cx: &mut ExtCtxt, expr: LiaExpr) -> P<Expr> {
         },
         LiaExpr::Closure(mut args, stmts) => {
             use std::collections::{HashMap, HashSet};
-            args.push(str_to_ident("this"));
+            args.insert(0, str_to_ident("this"));
             let mut copies = Vec::new();
             let stmts = {
                 let mut bound = HashSet::new();
@@ -196,8 +190,9 @@ fn gen_expr(cx: &mut ExtCtxt, expr: LiaExpr) -> P<Expr> {
             let mut binds = vec![];
             for i in 0..args.len() {
                 let arg_id = args[i];
-                let s = format!("Arg {}", i);
-                binds.push(quote_stmt!(cx, let $arg_id = args.get($i).expect($s).clone()).expect("Invalid stmt"));
+                let s = format!("Arg {} missing", i);
+                binds.push(quote_stmt!(cx, let $arg_id = args.get($i).expect($s).clone())
+                           .expect("Invalid stmt"));
             }
 
             // Not clear what the type of the closure is by default. Have to explicitly cast it.
@@ -309,7 +304,7 @@ fn gen_stmt(cx: &mut ExtCtxt, stmt: LiaStmt) -> Vec<Stmt> {
 
 pub fn gen_fn(cx: &mut ExtCtxt, mut fun: LiaFn) -> P<Item> {
     let st: Vec<Stmt> = fun.body.into_iter().flat_map(|stmt| gen_stmt(cx, stmt)).collect();
-    let id = fun.name;
+    let id = prefix_ident(&fun.name, "_lia_");
     let mut binds = vec![];
     fun.args.insert(0, str_to_ident("this"));
     for i in 0..fun.args.len() {

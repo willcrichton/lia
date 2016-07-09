@@ -2,6 +2,7 @@ use syntax::codemap::Span;
 use syntax::parse::token::Token;
 use syntax::parse::token;
 use syntax::ast::*;
+use syntax::tokenstream::TokenTree;
 use syntax::ext::base::{ExtCtxt, MacResult, MacEager, Annotatable};
 use syntax::ext::build::AstBuilder;
 use syntax::fold;
@@ -47,7 +48,17 @@ pub fn expand_lia(cx: &mut ExtCtxt, sp: Span, args: &[TokenTree]) ->
 
     let ast = lia::elaborate::elaborate(ast);
 
-    let fs: Vec<P<Item>> = ast.into_iter().map(|fun| gen_fn(cx, fun)).collect();
+    // All instances of the identifier "this" in the codegen'd AST must
+    // have the same token or the compiler will complain. I'm not sure how
+    // else to ensure this besides folding over the AST as below.
+    let this = token::str_to_ident("this");
+    let mut renamer = Renamer { id: this, from: "this".to_string() };
+
+    let fs: Vec<P<Item>> =
+        ast.into_iter()
+        .map(|fun| renamer.fold_item(gen_fn(cx, fun)).get(0).clone())
+        .collect();
+
     MacEager::items(Svec::many(fs))
 }
 
@@ -87,13 +98,14 @@ pub fn expand_borrow_type(cx: &mut ExtCtxt, sp: Span, args: &[TokenTree]) ->
     MacEager::expr(expr)
 }
 
-struct SelfRenamer {
+struct Renamer {
+    from: String,
     id: Ident
 }
 
-impl Folder for SelfRenamer {
+impl Folder for Renamer {
     fn fold_ident(&mut self, id: Ident) -> Ident {
-        if id.name.as_str() == "self" {
+        if id.name.as_str() == self.from.as_str() {
             self.id
         } else {
             id
@@ -130,7 +142,7 @@ pub fn impl_glue(cx: &mut ExtCtxt, sp: Span, mitem: &MetaItem, item: Annotatable
                                     let is_self = id.name.as_str() == "self";
                                     let ty = if is_self {
                                         let new_id = token::str_to_ident("_lia_self");
-                                        let mut renamer = SelfRenamer {id: new_id};
+                                        let mut renamer = Renamer {id: new_id, from: "self".to_string()};
                                         new_body = renamer.fold_block(new_body);
 
                                         id = new_id;
@@ -150,6 +162,7 @@ pub fn impl_glue(cx: &mut ExtCtxt, sp: Span, mitem: &MetaItem, item: Annotatable
                                         inputs[i].ty.clone()
                                     };
 
+                                    let i = i + 1; // shift right for first "this" arg
                                     quote_block!(cx, {
                                         cast!(let $id: $ty = args.get($i).expect($s));
                                     }).unwrap().stmts

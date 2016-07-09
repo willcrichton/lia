@@ -62,12 +62,12 @@ static EVAL_FN: &'static str = "_jit_eval";
 impl<'a> JitState<'a> {
     fn process_llvm(&self, llmod: &llvm::CSemiBox<'a, llvm::Module>) {
         use llvm::*;
-        let fun = llmod.get_function(self.name.as_str())
-            .expect(format!("LLVM global `{}` missing", self.name).as_str());
-        self.main_module.add_global_variable(self.name.as_str(), &***fun);
+        self.engine.add_module(llmod);
         if self.eval {
-            let fun = self.engine.find_function(EVAL_FN).unwrap();
-            self.engine.with_function(fun, |fun: extern fn(())| fun(()));
+            let fun = self.engine.find_function(self.name.as_str()).expect("No eval fn");
+            self.engine.with_function(fun, |fun: extern fn(())| {
+                fun(())
+            });
         }
     }
 }
@@ -126,7 +126,7 @@ impl<'a> Jit<'a> {
                         let mut state = self.state.borrow_mut();
                         let anon_fn = format!("{}_{}", EVAL_FN, state.anon_count);
                         state.anon_count += 1;
-                        (format!(r#"#[no_mangle] fn {} () {{ println!("{{:?}}", {}) }}"#, EVAL_FN, input),
+                        (format!(r#"#[no_mangle] fn {} () {{ println!("{{:?}}", ({})) }}"#, anon_fn, input),
                          true,
                          anon_fn)
                     },
@@ -180,12 +180,15 @@ impl<'a> CompilerCalls<'a> for Jit<'a> {
             let rs_llmod = trans.modules[0].llmod;
             assert!(!rs_llmod.is_null());
 
+            unsafe { rustc_llvm::LLVMDumpModule(rs_llmod) };
+
             let crates = state.session.cstore.used_crates(LinkagePreference::RequireDynamic);
 
             // Collect crates used in the session. Reverse order finds dependencies first.
             let deps: Vec<PathBuf> =
                 crates.into_iter().rev().filter_map(|(_, p)| p).collect();
             for path in deps {
+                println!("Loading dep: {:?}", path);
                 let s = match path.as_os_str().to_str() {
                     Some(s) => s,
                     None => panic!(
@@ -201,7 +204,7 @@ impl<'a> CompilerCalls<'a> for Jit<'a> {
             let llmod: &mut llvm::Module =
                 (rs_llmod as llvm_sys::prelude::LLVMModuleRef).into();
             let llmod = llmod.clone();
-            //llmod.verify().expect("Module invalid");
+            llmod.verify().expect("Module invalid");
 
             let mut state = jit_state.borrow_mut();
             state.process_llvm(&llmod);
@@ -241,6 +244,6 @@ mod test {
         }
     }
 
-    make_test!(compile_test, r#"#[no_mangle] pub fn test_add(a: i32, b: i32) -> i32 { a + b }"#);
+    //make_test!(compile_test, r#"#[no_mangle] pub fn test_add(a: i32, b: i32) -> i32 { a + b }"#);
     make_test!(expr_test, "1 + 2");
 }

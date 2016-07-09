@@ -6,6 +6,7 @@ use std::collections::HashMap;
 pub type LiaAny = Rc<RefCell<Rc<RefCell<Box<Any>>>>>;
 pub type LiaObject = HashMap<String, LiaAny>;
 pub type LiaClosure = Box<Fn(Vec<LiaAny>) -> LiaAny>;
+pub struct LiaNull;
 
 pub fn alloc<T: Any>(t: T) -> LiaAny {
     Rc::new(RefCell::new(Rc::new(RefCell::new(Box::new(t)))))
@@ -37,7 +38,7 @@ macro_rules! cast {
 #[macro_export]
 macro_rules! call {
     ($id:ident ( $( $x:expr ),* )) => {{
-        $id(vec![alloc(new_obj()), $( alloc($x) ),*])
+        concat_idents!(_lia_, $id)(vec![alloc(new_obj()), $( alloc($x) ),*])
     }}
 }
 
@@ -69,4 +70,23 @@ pub fn print(args: Vec<LiaAny>) -> LiaAny {
     }
     print!("\n");
     alloc(())
+}
+
+pub fn val_to_key(val: LiaAny) -> String {
+    let _tmp = val.borrow();
+    let val = _tmp.borrow();
+    if val.is::<i32>() {
+        format!("{}", val.downcast_ref::<i32>().unwrap())
+    } else {
+        val.downcast_ref::<String>().expect("Object key must be string or int").clone()
+    }
+}
+
+pub fn _lia_call(args: Vec<LiaAny>) -> LiaAny {
+    let fun = args.get(1).expect("Arg 1").clone();
+    let ctx = args.get(2).expect("Arg 2").clone();
+
+    let _tmp = fun.borrow();
+    let fun = _tmp.borrow();
+    (fun.downcast_ref::<LiaClosure>().expect("Closure"))(vec![ctx])
 }

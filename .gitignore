@@ -10,3 +10,5 @@ lia-tests/target
 
 lia-jit/Cargo.lock
 lia-jit/target
+
+lia-sandbox

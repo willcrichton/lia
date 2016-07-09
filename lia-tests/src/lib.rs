@@ -9,7 +9,6 @@ mod matrix;
 
 use lia::runtime::*;
 
-
 lia! {
     function add_test() {
         return 1 + 2;
@@ -78,13 +77,25 @@ lia! {
         }
         return z;
     }
+
+    function self_ref_test() {
+        var x = {
+            y: function() {
+                this.z = 5;
+            },
+            z: 0
+        };
+        x.y();
+        return x.z;
+    }
 }
 
 fn _lia_external_fun(args: Vec<LiaAny>) -> LiaAny {
-    cast!(let num: i32 = args[0].clone());
+    cast!(let num: i32 = args[1].clone());
     return alloc(num + 1);
 }
 
+// TODO: auto-generate function name somehow?
 macro_rules! gen_test {
     ($test:ident, $fun:ident, $ty:ty, $val:expr) => {
         #[test]
@@ -105,6 +116,7 @@ gen_test!(lia_nested_object_test, nested_object_test, i32, 3);
 gen_test!(lia_while_test, while_test, i32, 10);
 gen_test!(lia_for_test, for_test, i32, 10);
 gen_test!(lia_foreach_test, foreach_test, i32, 3);
+gen_test!(lia_self_ref_test, self_ref_test, i32, 5);
 
 #[test]
 fn lia_fib_test() {
