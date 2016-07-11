@@ -18,14 +18,10 @@ use rustc_driver::{CompilerCalls, Compilation};
 use rustc_driver::driver::CompileController;
 use rustc::session::Session;
 use rustc::middle::cstore::LinkagePreference;
-use std::ffi::{CString, CStr};
 use syntax::codemap::FileLoader;
+use std::ffi::{CString, CStr};
 use std::io;
 use std::path::{PathBuf, Path};
-// use rustc_llvm;
-// use getopts;
-// use llvm;
-// use llvm_sys;
 use std::rc::Rc;
 use std::cell::RefCell;
 
@@ -47,6 +43,9 @@ impl FileLoader for JitInput {
     fn read_file(&self, _: &Path) -> io::Result<String> { Ok(self.input.clone()) }
 }
 
+// Even though we don't use ctx, need to have it live in here as the engine
+// is tied to its lifetime.
+#[allow(dead_code)]
 struct JitState<'a> {
     ctx: &'a llvm::CSemiBox<'a, llvm::Context>,
     engine: llvm::JitEngine<'a>,
@@ -65,9 +64,7 @@ impl<'a> JitState<'a> {
         self.engine.add_module(llmod);
         if self.eval {
             let fun = self.engine.find_function(self.name.as_str()).expect("No eval fn");
-            self.engine.with_function(fun, |fun: extern fn(())| {
-                fun(())
-            });
+            self.engine.with_function(fun, |fun: extern fn(())| fun(()));
         }
     }
 }
@@ -126,7 +123,7 @@ impl<'a> Jit<'a> {
                         let mut state = self.state.borrow_mut();
                         let anon_fn = format!("{}_{}", EVAL_FN, state.anon_count);
                         state.anon_count += 1;
-                        (format!(r#"#[no_mangle] fn {} () {{ println!("{{:?}}", ({})) }}"#, anon_fn, input),
+                        (format!(r#"#[no_mangle] fn {} () {{ println!("{{:?}}", {{ {} }}) }}"#, anon_fn, input),
                          true,
                          anon_fn)
                     },
@@ -215,29 +212,39 @@ impl<'a> CompilerCalls<'a> for Jit<'a> {
 }
 
 #[macro_export]
-macro_rules! make_context {
-    ($id:ident) => {
-        let $id = {
+macro_rules! make_jit {
+    ($jit:ident, $opts:expr) => {
+        let _jit_ctx = {
             use llvm::Context;
             Context::new()
         };
-        let $id = $id.as_semi();
+        let _jit_ctx = _jit_ctx.as_semi();
+        let mut $jit = {
+            use lia_jit::Jit;
+            Jit::new(_jit_ctx, $opts)
+        };
     }
 }
 
 #[cfg(test)]
 mod test {
+    use super::*;
+
     static SYSROOT: &'static str =
         "/Users/will/.multirust/toolchains/nightly-x86_64-apple-darwin";
-
-    use super::*;
 
     macro_rules! make_test {
         ($fun:ident, $s:expr) => {
             #[test]
             fn $fun() {
-                make_context!(ctx);
-                let mut jit = Jit::new(ctx, JitOptions { sysroot: SYSROOT.to_string() });
+                let _jit_ctx = {
+                    use llvm::Context;
+                    Context::new()
+                };
+                let _jit_ctx = _jit_ctx.as_semi();
+                let mut jit = {
+                    Jit::new(_jit_ctx, JitOptions { sysroot: SYSROOT.to_string() })
+                };
                 let input = $s.to_string();
                 jit.run(input);
             }
@@ -245,5 +252,6 @@ mod test {
     }
 
     //make_test!(compile_test, r#"#[no_mangle] pub fn test_add(a: i32, b: i32) -> i32 { a + b }"#);
-    make_test!(expr_test, "1 + 2");
+    //make_test!(expr_test, "1 + 2");
+    make_test!(print_test, "{println!(\"hello world\");}");
 }

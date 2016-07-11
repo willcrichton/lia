@@ -7,8 +7,11 @@ pub enum LiaToken {
     Function,
     Return,
     If,
+    Else,
     While,
-    For
+    For,
+    True,
+    False,
 }
 
 impl LiaToken {
@@ -22,8 +25,11 @@ impl LiaToken {
                 "var" => LiaToken::Var,
                 "return" => LiaToken::Return,
                 "if" => LiaToken::If,
+                "else" => LiaToken::Else,
                 "while" => LiaToken::While,
                 "for" => LiaToken::For,
+                "true" => LiaToken::True,
+                "false" => LiaToken::False,
                 _ => LiaToken::RustToken(t)
             }
         } else {

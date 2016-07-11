@@ -82,11 +82,16 @@ pub fn val_to_key(val: LiaAny) -> String {
     }
 }
 
-pub fn _lia_call(args: Vec<LiaAny>) -> LiaAny {
-    let fun = args.get(1).expect("Arg 1").clone();
-    let ctx = args.get(2).expect("Arg 2").clone();
+// Should be a function, left as macro pending resolution of #33703
+//pub fn _lia_call(args: Vec<LiaAny>) -> LiaAny {
+#[macro_export]
+macro_rules! _lia_call {
+    ($args:ident) => {{
+        let fun = $args.get(1).expect("Arg 1").clone();
+        let ctx = $args.get(2).expect("Arg 2").clone();
 
-    let _tmp = fun.borrow();
-    let fun = _tmp.borrow();
-    (fun.downcast_ref::<LiaClosure>().expect("Closure"))(vec![ctx])
+        let _tmp = fun.borrow();
+        let fun = _tmp.borrow();
+        (fun.downcast_ref::<LiaClosure>().expect("Closure"))(vec![ctx])
+    }}
 }

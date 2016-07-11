@@ -1,11 +1,11 @@
-#![feature(plugin, box_syntax, test)]
+#![feature(plugin, box_syntax, test, concat_idents)]
 #![plugin(lia_plugin)]
 
-#[macro_use]
-extern crate lia;
+#[macro_use] extern crate lia;
 extern crate test;
 
 mod matrix;
+mod lists;
 
 use lia::runtime::*;
 
@@ -88,6 +88,28 @@ lia! {
         x.y();
         return x.z;
     }
+
+    function if_test() {
+        var x = 0;
+        var y = {};
+        if (0) { x = x + 1; }
+        if (true) { x = x + 1; }
+        if (y.foo) { x = x + 1; }
+        return x;
+    }
+
+    function if_else_test() {
+        var x = 0;
+        if (0) { x = 1; }
+        else { x = 2; }
+        return x;
+    }
+
+    function double_add_test() {
+        var x = 1;
+        x = x + x;
+        return x;
+    }
 }
 
 fn _lia_external_fun(args: Vec<LiaAny>) -> LiaAny {
@@ -117,6 +139,9 @@ gen_test!(lia_while_test, while_test, i32, 10);
 gen_test!(lia_for_test, for_test, i32, 10);
 gen_test!(lia_foreach_test, foreach_test, i32, 3);
 gen_test!(lia_self_ref_test, self_ref_test, i32, 5);
+gen_test!(lia_if_test, if_test, i32, 1);
+gen_test!(lia_if_else_test, if_else_test, i32, 2);
+gen_test!(lia_double_add_test, double_add_test, i32, 2);
 
 #[test]
 fn lia_fib_test() {

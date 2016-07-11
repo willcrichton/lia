@@ -65,7 +65,10 @@ fn gen_expr(cx: &mut ExtCtxt, expr: LiaExpr) -> P<Expr> {
         },
         LiaExpr::String(s) => {
             quote_expr!(cx, alloc(String::from($s)))
-        }
+        },
+        LiaExpr::Bool(b) => {
+            quote_expr!(cx, alloc($b))
+        },
         LiaExpr::Var(id) => {
             quote_expr!(cx, $id.clone())
         },
@@ -107,7 +110,6 @@ fn gen_expr(cx: &mut ExtCtxt, expr: LiaExpr) -> P<Expr> {
             quote_expr!(cx, {
                 let key = $key;
                 let s = val_to_key(key);
-
                 let obj = $obj;
                 let mut _tmp = obj.borrow_mut();
                 let mut _tmp = _tmp.borrow_mut();
@@ -116,6 +118,7 @@ fn gen_expr(cx: &mut ExtCtxt, expr: LiaExpr) -> P<Expr> {
                 (*ht.entry(s).or_insert_with(make_null)).clone()
             })
         },
+        // TODO: make this a macro?
         LiaExpr::Array(exprs) => {
             let mut kvs = Vec::new();
             for i in 0..exprs.len() {
@@ -241,7 +244,6 @@ fn gen_stmt(cx: &mut ExtCtxt, stmt: LiaStmt) -> Vec<Stmt> {
                     let src = rhs.borrow_mut();
                     *dst = src.clone();
                 }
-
             }).unwrap()]
         },
         LiaStmt::Return(expr) => {
@@ -252,20 +254,25 @@ fn gen_stmt(cx: &mut ExtCtxt, stmt: LiaStmt) -> Vec<Stmt> {
             let e = gen_expr(cx, expr);
             vec![quote_stmt!(cx, let _ = $e;).expect("Invalid expr stmt")]
         },
-        LiaStmt::If(cond, body) => {
+        LiaStmt::If(cond, if_, else_) => {
             let e = gen_expr(cx, cond);
-            let st: Vec<Stmt> = body.into_iter().flat_map(|stmt| gen_stmt(cx, stmt)).collect();
+            let if_: Vec<Stmt> = if_.into_iter().flat_map(|stmt| gen_stmt(cx, stmt)).collect();
+            let else_: Vec<Stmt> = match else_ {
+                Some(else_) => else_.into_iter().flat_map(|stmt| gen_stmt(cx, stmt)).collect(),
+                None => vec![]
+            };
             vec![quote_stmt!(cx, {
                 let e = $e;
                 let _tmp = e.borrow_mut();
                 let cond = _tmp.borrow_mut();
                 let b = if cond.is::<bool>() {
-                        *cond.downcast_ref::<bool>().unwrap()
+                    *cond.downcast_ref::<bool>().unwrap()
                 } else if cond.is::<i32>() {
                     let n = *cond.downcast_ref::<i32>().unwrap();
-                        n != 0
-                } else { !cond.is::<()>() };
-                if b { $st; }
+                    n != 0
+                } else { !cond.is::<()>() && !cond.is::<LiaNull>() };
+                if b { $if_; }
+                else { $else_; }
             }).expect("Invalid if stmt")]
         },
         LiaStmt::While(guard, body) => {

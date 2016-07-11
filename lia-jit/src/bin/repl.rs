@@ -6,15 +6,14 @@ extern crate llvm;
 
 fn repl(matches: getopts::Matches) {
     use std::io::{stdin, stdout, Write};
-    use lia_jit::{Jit, JitOptions};
+    use lia_jit::JitOptions;
 
     if !matches.free.is_empty() {
         panic!("Need to handle input files");
     }
 
     let sysroot = "/Users/will/.multirust/toolchains/nightly-x86_64-apple-darwin".to_string();
-    make_context!(ctx);
-    let mut jit = Jit::new(ctx, JitOptions { sysroot: sysroot });
+    make_jit!(jit, JitOptions { sysroot: sysroot });
 
     loop {
         let mut line = String::new();

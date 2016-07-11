@@ -1,12 +1,17 @@
 use lia::runtime::*;
 
+pub fn _lia_call(args: Vec<LiaAny>) -> LiaAny {
+    _lia_call!(args)
+}
+
 lia! {
     function new(obj) {
         var x = {};
         for (var method : obj.prototype) {
-            x[method] = obj[method];
+            x[method] = obj.prototype[method];
         }
-        obj.prototype.constructor(x);
+        @call(obj.prototype.constructor, x);
+        return x;
     }
 
     function list_test() {
@@ -21,14 +26,14 @@ lia! {
             }
         };
 
-        var x = new(list);
+        var x = @new(list);
         x.append(3);
         return x[0];
     }
 }
 
 #[test]
-fn list_test() {
+fn lia_list_test() {
     let result = call!(list_test());
     cast!(let num: i32 = result);
     assert!(num == 3);

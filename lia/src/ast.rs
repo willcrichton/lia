@@ -7,6 +7,7 @@ pub enum LiaExpr {
     BinOp(Token, Box<LiaExpr>, Box<LiaExpr>),
     Integer(i32),
     String(String),
+    Bool(bool),
     Var(Ident),
     RsVar(Vec<Ident>),
     Call(Box<LiaExpr>, Vec<LiaExpr>),
@@ -22,7 +23,7 @@ pub enum LiaStmt {
     Assign(LiaExpr, LiaExpr),
     Return(LiaExpr),
     Expr(LiaExpr),
-    If(LiaExpr, Vec<LiaStmt>),
+    If(LiaExpr, Vec<LiaStmt>, Option<Vec<LiaStmt>>),
     While(LiaExpr, Vec<LiaStmt>),
     ForObj(Ident, LiaExpr, Vec<LiaStmt>),
 }
@@ -111,10 +112,15 @@ impl LiaStmt {
             &mut Expr(ref mut expr) => {
                 expr.remap_free_vars(bound, mapping);
             },
-            &mut If(ref mut expr, ref mut stmts) => {
+            &mut If(ref mut expr, ref mut if_, ref mut else_) => {
                 expr.remap_free_vars(bound, mapping);
-                for s in stmts.iter_mut() {
+                for s in if_.iter_mut() {
                     s.remap_free_vars_aux(bound, mapping);
+                }
+                if let &mut Some(ref mut else_) = else_ {
+                    for s in else_.iter_mut() {
+                        s.remap_free_vars_aux(bound, mapping);
+                    }
                 }
             }
             &mut While(ref mut guard, ref mut body) => {
