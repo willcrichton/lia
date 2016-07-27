@@ -1,5 +1,5 @@
 use syntax::codemap::Span;
-use syntax::parse::token::Token;
+use syntax::parse::token::{Token, str_to_ident};
 use syntax::parse::token;
 use syntax::ast::*;
 use syntax::tokenstream::TokenTree;
@@ -15,17 +15,54 @@ use lia::ast::prefix_ident;
 use lia::codegen::gen_fn;
 use lia;
 
-fn tt_flatten(tt: &TokenTree) -> Vec<Token> {
+fn tt_flatten(tt: &TokenTree) -> Vec<LiaToken> {
     match tt {
-        &TokenTree::Token(_, ref t) => vec![t.clone()],
+        &TokenTree::Token(_, ref t) => vec![LiaToken::from_rust_token(t.clone())],
         &TokenTree::Delimited(_, ref delim) => {
-            let mut toks: Vec<Token> =
-                delim.tts.iter().flat_map(tt_flatten).collect();
-            toks.insert(0, Token::OpenDelim(delim.delim));
-            toks.push(Token::CloseDelim(delim.delim));
-            toks
+            let ref tokens = delim.tts;
+            let mut quoted = Vec::new();
+            let rs_id = str_to_ident("rust");
+            let mut in_quote = false;
+            let mut quote_start = 0;
+            let mut i = 0;
+
+            quoted.push(LiaToken::from_rust_token(Token::OpenDelim(delim.delim)));
+            if tokens.len() > 0 {
+                while i < tokens.len() - 1 {
+                    let is_rust = |j| {
+                        if let &TokenTree::Token(_, Token::Ident(rs_id2)) = &tokens[j] {
+                        rs_id2.name.as_str() == rs_id.name.as_str()
+                        } else {
+                            false
+                        }
+                    };
+                    match (is_rust(i), is_rust(i+1), &tokens[i], &tokens[i+1]) {
+                        (true, _, _, &TokenTree::Token(_, Token::Pound)) => {
+                            in_quote = true;
+                            quote_start = i + 2;
+                            i += 1;
+                        },
+                        (_, true, &TokenTree::Token(_, Token::Pound), _) => {
+                            in_quote = false;
+                            quoted.push(LiaToken::Quote(tokens[quote_start..i].to_vec()));
+                            i += 1;
+                        },
+                        _ => {
+                            if !in_quote {
+                            quoted.append(&mut tt_flatten(&tokens[i]));
+                            }
+                        }
+                    };
+                    i += 1;
+                }
+
+                quoted.append(&mut tt_flatten(&tokens[i]));
+            }
+            quoted.push(LiaToken::from_rust_token(Token::CloseDelim(delim.delim)));
+
+            quoted
         },
-        _ => panic!("TokenTree has Sequence??, {:?}", tt)
+        _ => panic!("TokenTree has Sequence??: {:?}", tt)
     }
 }
 
@@ -37,10 +74,10 @@ pub fn expand_lia(cx: &mut ExtCtxt, sp: Span, args: &[TokenTree]) ->
         args
         .into_iter()
         .flat_map(tt_flatten)
-        .map(|t| LiaToken::from_rust_token(t))
         .collect();
 
-    //println!("tokens: {:?}", tokens);
+
+    println!("tokens: {:?}", tokens);
 
     let ast =
         lia::grammar::parse_funs(tokens)
@@ -63,12 +100,55 @@ pub fn expand_lia(cx: &mut ExtCtxt, sp: Span, args: &[TokenTree]) ->
 }
 
 #[allow(unused_variables)]
+pub fn expand_alloc(cx: &mut ExtCtxt, sp: Span, args: &[TokenTree]) ->
+    Box<MacResult + 'static>
+{
+    use syntax::parse::tts_to_parser;
+
+    let mut parser = tts_to_parser(&cx.parse_sess, args.to_vec(), Vec::new());
+    let ty = match parser.parse_ty() {
+        Ok(ty) => ty,
+        Err(_) => panic!("Invalid type"),
+    };
+
+    let expr = match parser.parse_expr() {
+        Ok(expr) => expr,
+        Err(_) => panic!("Invalid expr"),
+    };
+
+    MacEager::expr(match ty.node.clone() {
+        TyKind::Path(_, path) => {
+            let path_s = format!("{}", path);
+            if path_s == "i32" || path_s == "LiaNumber" {
+                quote_expr!(cx, alloc_number($expr))
+            } else if path_s == "String" || path_s == "LiaString" {
+                quote_expr!(cx, alloc_string($expr))
+            } else if path_s == "bool" || path_s == "LiaBool" {
+                quote_expr!(cx, alloc_bool($expr))
+            } else if path_s == "LiaObject" {
+                quote_expr!(cx, alloc_object($expr))
+            } else if path_s == "LiaClosure" {
+                quote_expr!(cx, alloc_closure($expr))
+            } else {
+                quote_expr!(cx, alloc_other($expr))
+            }
+        },
+        TyKind::Tup(vec) => {
+            assert!(vec.len() == 0);
+            quote_expr!(cx, alloc_null($expr))
+        },
+        _ => panic!("Ty must be a path")
+    })
+}
+
+#[allow(unused_variables)]
 pub fn expand_borrow_type(cx: &mut ExtCtxt, sp: Span, args: &[TokenTree]) ->
     Box<MacResult + 'static>
 {
     use syntax::parse::tts_to_parser;
 
-    let mut parser = tts_to_parser(cx.parse_sess, args.to_vec(), Vec::new());
+    let mut parser = tts_to_parser(&cx.parse_sess, args.to_vec(), Vec::new());
+
     let id = match parser.parse_ident() {
         Ok(id) => id,
         Err(_) => panic!("Invalid ident"),
@@ -79,24 +159,85 @@ pub fn expand_borrow_type(cx: &mut ExtCtxt, sp: Span, args: &[TokenTree]) ->
         Err(_) => panic!("Invalid ty"),
     };
 
-    let ty_str = format!("Invalid cast to {:?}", ty);
-    let expr = match &ty.node {
+    let (ty, is_ref) = match &ty.node {
         &TyKind::Rptr(_, ref mutty) => {
             let sub_ty = mutty.ty.clone();
-            quote_expr!(cx, {
-                $id.downcast_mut::<$sub_ty>().expect($ty_str)
-            })
+            (sub_ty, true)
         },
         &TyKind::Path(_, ref path) => {
-            quote_expr!(cx, {
-                $id.downcast_mut::<$ty>().expect($ty_str).clone()
-            })
+            (ty.clone(), false)
         },
         _ => panic!("Type isn't yet supported for casting with Lia"),
     };
 
+    let is_mut_borrow = match parser.parse_expr() {
+        Ok(expr) => if let &ExprKind::Lit(ref lit) = &expr.node {
+            if let &LitKind::Bool(ref b) = &lit.node {
+                *b
+            } else {
+                panic!("Bad bool")
+            }
+        } else {
+            panic!("Bad bool")
+        },
+        Err(_) => {
+            panic!("Bad bool")
+        }
+    };
+
+    let make_caster = |path: Path, path_s: String| -> P<Expr> {
+        let err_str = format!("Invalid cast: expected {}, found {{:?}}", path_s);
+        if is_mut_borrow {
+            quote_expr!(cx, {
+                match *$id {
+                    $path(ref mut x) => x,
+                    ref other => panic!($err_str, other)
+                }
+            })
+        } else {
+            quote_expr!(cx, {
+                match *$id {
+                    $path(ref x) => x,
+                    ref other => panic!($err_str, other)
+                }
+            })
+        }
+    };
+
+    let ty_str = format!("Invalid cast: expected {:?}, found {{:?}}", ty);
+
+    let default =
+        make_caster(quote_path!(cx, LiaValue::Unknown), format!("{:?}", ty));
+    let default =
+        quote_expr!(cx, { $default.downcast_ref::<$ty>().expect($ty_str) });
+
+    let expr = match ty.node.clone() {
+        TyKind::Path(_, path) => {
+            let path_s = format!("{}", path);
+            if path_s == "i32" || path_s == "LiaNumber" {
+                make_caster(quote_path!(cx, LiaValue::Number), path_s)
+            } else if path_s == "String" || path_s == "LiaString" {
+                make_caster(quote_path!(cx, LiaValue::String), path_s)
+            } else if path_s == "bool" || path_s == "LiaBool" {
+                make_caster(quote_path!(cx, LiaValue::Bool), path_s)
+            } else if path_s == "LiaObject" {
+                make_caster(quote_path!(cx, LiaValue::Object), path_s)
+            } else if path_s == "LiaClosure" {
+                make_caster(quote_path!(cx, LiaValue::Closure), path_s)
+            } else {
+                default
+            }
+        },
+        _ => default
+    };
+
+    let expr = if !is_ref { quote_expr!(cx, { ($expr).clone() }) }
+    else { expr };
+
     MacEager::expr(expr)
 }
+
+
 
 struct Renamer {
     from: String,
@@ -164,7 +305,7 @@ pub fn impl_glue(cx: &mut ExtCtxt, sp: Span, mitem: &MetaItem, item: Annotatable
 
                                     let i = i + 1; // shift right for first "this" arg
                                     quote_block!(cx, {
-                                        cast!(let $id: $ty = args.get($i).expect($s));
+                                        cast!(let mut $id: $ty = args.get($i).expect($s));
                                     }).unwrap().stmts
                                 },
                                 _ => panic!("#[lia_impl_glue] only supports methods with no pattern matching in the arguments")
@@ -172,15 +313,24 @@ pub fn impl_glue(cx: &mut ExtCtxt, sp: Span, mitem: &MetaItem, item: Annotatable
                             binds.push(bind);
                         }
 
+                        let (ret_ty, new_body) = match sig.decl.output {
+                            FunctionRetTy::Ty(ref ty) => (ty.clone(), new_body),
+                            _ => (quote_ty!(cx, ()), quote_block!(cx, {
+                                {$new_body};
+                                return ();
+                            }))
+                        };
+
                         let binds: Vec<Stmt> = binds.into_iter().flat_map(|e| e).collect();
-                        // TODO: attrs for ignoring warnings on fun?
+                        // TODO: attrs for ignoring warnings on fn?
                         let fun =
                             quote_item!(
                                 cx,
-                                fn _ignore_this_name (args: Vec<LiaAny>) -> LiaAny {
+                                fn _ignore_this_name (args: Vec<LiaPtr>) -> LiaPtr {
                                     $binds;
-                                    alloc((move ||$new_body)())
+                                    alloc!($ret_ty, (move ||$new_body)())
                                 }).unwrap();
+
                         if let ItemKind::Fn(decl, unsafety, constness, abi,
                                             generics, block)
                             = fun.node.clone()

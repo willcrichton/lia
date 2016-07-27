@@ -3,6 +3,7 @@ use syntax::ast::{Name, Ident};
 use syntax::parse::token::{Token as RsToken, BinOpToken, Lit, DelimToken, intern};
 use super::ast::{LiaExpr, LiaStmt, LiaFn};
 use super::token::LiaToken;
+use syntax::tokenstream::TokenTree;
 
 grammar;
 
@@ -12,6 +13,7 @@ extern {
        String => LiaToken::RustToken(RsToken::Literal(Lit::Str_(<Name>), _)),
        Ident => LiaToken::RustToken(RsToken::Ident(<Ident>)),
        Op => LiaToken::RustToken(RsToken::BinOp(<BinOpToken>)),
+       OpEq => LiaToken::RustToken(RsToken::BinOpEq(<BinOpToken>)),
        Eq => LiaToken::RustToken(RsToken::Eq),
        EqEq => LiaToken::RustToken(RsToken::EqEq),
        Ge => LiaToken::RustToken(RsToken::Ge),
@@ -38,6 +40,7 @@ extern {
        Else => LiaToken::Else,
        True => LiaToken::True,
        False => LiaToken::False,
+       Quote => LiaToken::Quote(<Vec<TokenTree>>),
     }
 }
 
@@ -65,6 +68,8 @@ assign: Vec<LiaStmt> = {
     Var <id:Ident> Eq <e:expr> =>
         vec![LiaStmt::Declare(id), LiaStmt::Assign(LiaExpr::Var(id), e)],
     <lhs:expr> Eq <rhs:expr> => vec![LiaStmt::Assign(lhs, rhs)],
+    <lhs:expr> <op:OpEq> <rhs:expr> => vec![LiaStmt::Assign(lhs.clone(),
+        LiaExpr::BinOp(RsToken::BinOp(op), Box::new(lhs), Box::new(rhs)))]
 };
 
 stmt: Vec<LiaStmt> = {
@@ -131,6 +136,7 @@ atom: LiaExpr = {
     Lbracket <vals:Sep<expr, Comma>> Rbracket => LiaExpr::Array(vals),
     <obj:ident_or_expr> Lbracket <e:expr> Rbracket => LiaExpr::Index(Box::new(obj), Box::new(e)),
     Function Lparen <args:Sep<Ident, Comma>> Rparen Lbrace <s:stmt_list> Rbrace => LiaExpr::Closure(args, s),
+    <q:Quote> => LiaExpr::Quote(q),
 };
 
 ident: LiaExpr = {

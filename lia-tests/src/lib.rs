@@ -1,13 +1,13 @@
 #![feature(plugin, box_syntax, test, concat_idents)]
 #![plugin(lia_plugin)]
 
-#[macro_use] extern crate lia;
+#[macro_use] extern crate lia_runtime;
 extern crate test;
 
-mod matrix;
+// mod matrix;
 mod lists;
 
-use lia::runtime::*;
+use lia_runtime::*;
 
 lia! {
     function add_test() {
@@ -38,34 +38,31 @@ lia! {
 
     function closure_test() {
         var x = 0;
-        (function() { x = x + 1; })();
+        (function() { x += 1; })();
         return x;
     }
 
     function fib_test(n) {
-        var fib_fn = function(n) {
-            if (n == 0) { return 0; }
-            if (n == 1) { return 1; }
-            return fib_fn(n - 1) + fib_fn(n - 2);
-        };
-        return fib_fn(n);
+        if (n <= 1) { return n; }
+        return @fib_test(n - 1) + @fib_test(n - 2);
     }
 
     function nested_object_test() {
-        var x = {foo: {bar: 3}};
+        var x = {foo: {bar: 2}};
+        x.foo.bar = 3;
         return x.foo.bar;
     }
 
     function while_test() {
         var x = 0;
         while (x < 10) {
-            x = x + 1;
+            x += 1;
         }
         return x;
     }
 
     function for_test() {
-        for (var x = 0; x < 10; x = x + 1) {}
+        for (var x = 0; x < 10; x += 1) {}
         return x;
     }
 
@@ -73,7 +70,7 @@ lia! {
         var x = {foo: 1, bar: 2};
         var z = 0;
         for (var y : x) {
-            z = z + x[y];
+            z += x[y];
         }
         return z;
     }
@@ -92,9 +89,9 @@ lia! {
     function if_test() {
         var x = 0;
         var y = {};
-        if (0) { x = x + 1; }
-        if (true) { x = x + 1; }
-        if (y.foo) { x = x + 1; }
+        if (0) { x += 1; }
+        if (true) { x += 1; }
+        if (y.foo) { x += 1; }
         return x;
     }
 
@@ -107,14 +104,27 @@ lia! {
 
     function double_add_test() {
         var x = 1;
-        x = x + x;
+        x += x;
+        return x;
+    }
+
+    function concat_test() {
+        var x = "foo";
+        x += "bar";
+        return x;
+    }
+
+    function str_eq_test() {
+        var x = 0;
+        if ("foo" == "foo") { x += 1; }
+        if ("bar" == "foo") { x += 1; }
         return x;
     }
 }
 
-fn _lia_external_fun(args: Vec<LiaAny>) -> LiaAny {
+fn _lia_external_fun(args: Vec<LiaPtr>) -> LiaPtr {
     cast!(let num: i32 = args[1].clone());
-    return alloc(num + 1);
+    return alloc_number(num + 1);
 }
 
 // TODO: auto-generate function name somehow?
@@ -142,10 +152,12 @@ gen_test!(lia_self_ref_test, self_ref_test, i32, 5);
 gen_test!(lia_if_test, if_test, i32, 1);
 gen_test!(lia_if_else_test, if_else_test, i32, 2);
 gen_test!(lia_double_add_test, double_add_test, i32, 2);
+gen_test!(lia_concat_test, concat_test, String, "foobar");
+gen_test!(lia_str_eq_test, str_eq_test, i32, 1);
 
 #[test]
 fn lia_fib_test() {
-    cast!(let num: i32 = call!(fib_test(10)));
+    cast!(let num: i32 = call!(fib_test(alloc_number(10))));
     assert!(num == 55);
 }
 
@@ -153,5 +165,5 @@ fn lia_fib_test() {
 // use test::Bencher;
 // #[bench]
 // fn lia_fib_bench(b: &mut Bencher) {
-//     b.iter(|| call!(fib_test(30)));
+//     b.iter(|| call!(fib_test(alloc_number(30))));
 // }

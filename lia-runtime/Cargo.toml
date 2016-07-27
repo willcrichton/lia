@@ -1,8 +1,7 @@
 [package]
-name = "lia-tests"
+name = "lia-runtime"
 version = "0.1.0"
 authors = ["Will Crichton <wcrichto@stanford.edu>"]
 
 [dependencies]
 lia-plugin = { path = "../lia-plugin" }
-lia-runtime = { path = "../lia-runtime" }

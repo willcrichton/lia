@@ -1,6 +1,7 @@
 use syntax::parse::token::{Token as RsToken};
+use syntax::tokenstream::TokenTree;
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum LiaToken {
     RustToken(RsToken),
     Var,
@@ -12,6 +13,8 @@ pub enum LiaToken {
     For,
     True,
     False,
+    Quote(Vec<TokenTree>),
+    Rust,
 }
 
 impl LiaToken {
@@ -30,6 +33,7 @@ impl LiaToken {
                 "for" => LiaToken::For,
                 "true" => LiaToken::True,
                 "false" => LiaToken::False,
+                "rust" => LiaToken::Rust,
                 _ => LiaToken::RustToken(t)
             }
         } else {

@@ -1,3 +1,6 @@
+#![feature(plugin)]
+#![plugin(lia_plugin)]
+
 use std::any::Any;
 use std::cell::RefCell;
 use std::rc::Rc;
@@ -40,7 +43,7 @@ make_allocator!(alloc_closure, LiaClosure, LiaValue::Closure);
 make_allocator!(alloc_bool, LiaBool, LiaValue::Bool);
 make_allocator!(alloc_object, LiaObject, LiaValue::Object);
 
-pub fn alloc_null() -> LiaPtr {
+pub fn alloc_null(_: ()) -> LiaPtr {
     wrap(LiaValue::Null)
 }
 
@@ -54,19 +57,26 @@ pub fn new_obj() -> LiaObject {
 }
 
 #[macro_export]
+macro_rules! alloc {
+    ($t:ty, $e:expr) => {
+        _alloc!($t {$e})
+    }
+}
+
+#[macro_export]
 macro_rules! cast {
     (let mut $id:ident : $t:ty = $e:expr) => {
         let _tmp = $e;
         let mut _tmp = _tmp.borrow_mut();
         let mut _tmp = _tmp.borrow_mut();
-        let _tmp = _borrow_type!(_tmp $t);
+        let mut _tmp = _borrow_type!(_tmp $t true);
         let mut $id = _tmp;
     };
     (let $id:ident : $t:ty = $e:expr) => {
         let _tmp = $e;
         let _tmp = _tmp.borrow();
         let _tmp = _tmp.borrow();
-        let _tmp = _borrow_type!(_tmp $t);
+        let _tmp = _borrow_type!(_tmp $t false);
         let $id = _tmp;
     };
 }
@@ -98,7 +108,7 @@ pub fn _lia_print(args: Vec<LiaPtr>) -> LiaPtr {
         let arg = _tmp.borrow();
         println!("{:?}", arg);
     }
-    alloc_null()
+    alloc_null(())
 }
 
 pub fn val_to_key(val: LiaPtr) -> String {
@@ -115,6 +125,6 @@ pub fn _lia_call(args: Vec<LiaPtr>) -> LiaPtr {
     let fun = args.get(1).expect("Arg 1").clone();
     let ctx = args.get(2).expect("Arg 2").clone();
 
-    cast!(let fun: LiaClosure = fun);
-    fun(vec![ctx]);
+    cast!(let fun: &LiaClosure = fun);
+    fun(vec![ctx])
 }

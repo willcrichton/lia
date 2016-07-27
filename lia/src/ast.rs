@@ -1,10 +1,12 @@
 use std::collections::{HashMap, HashSet};
-use syntax::parse::token::{Token, BinOpToken, str_to_ident};
+use token::LiaToken;
+use syntax::parse::token::{Token as RsToken, BinOpToken, str_to_ident};
+use syntax::tokenstream::TokenTree;
 use syntax::ast::Ident;
 
 #[derive(Debug, Clone)]
 pub enum LiaExpr {
-    BinOp(Token, Box<LiaExpr>, Box<LiaExpr>),
+    BinOp(RsToken, Box<LiaExpr>, Box<LiaExpr>),
     Integer(i32),
     String(String),
     Bool(bool),
@@ -15,6 +17,7 @@ pub enum LiaExpr {
     Object(Vec<(LiaExpr, LiaExpr)>),
     Index(Box<LiaExpr>, Box<LiaExpr>),
     Array(Vec<LiaExpr>),
+    Quote(Vec<TokenTree>),
 }
 
 #[derive(Debug, Clone)]

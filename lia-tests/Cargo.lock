@@ -2,8 +2,8 @@
 name = "lia-tests"
 version = "0.1.0"
 dependencies = [
- "lia 0.1.0",
  "lia-plugin 0.1.0",
+ "lia-runtime 0.1.0",
 ]
 
 [[package]]
@@ -136,6 +136,13 @@ name = "lia-plugin"
 version = "0.1.0"
 dependencies = [
  "lia 0.1.0",
+]
+
+[[package]]
+name = "lia-runtime"
+version = "0.1.0"
+dependencies = [
+ "lia-plugin 0.1.0",
 ]
 
 [[package]]

@@ -12,3 +12,6 @@ lia-jit/Cargo.lock
 lia-jit/target
 
 lia-sandbox
+
+lia-runtime/Cargo.lock
+lia-runtime/target

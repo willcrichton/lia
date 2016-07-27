@@ -31,43 +31,64 @@ fn gen_expr(cx: &mut ExtCtxt, expr: LiaExpr) -> P<Expr> {
         LiaExpr::BinOp(op, box e1, box e2) => {
             let s1 = gen_expr(cx, e1);
             let s2 = gen_expr(cx, e2);
-            let (e, ty) = match op {
+            let (e, fun) = match op {
                 RsToken::BinOp(BinOpToken::Plus) =>
-                    (quote_expr!(cx, s1v + s2v), quote_ty!(cx, i32)),
+                    (quote_expr!(cx, s1v + s2v),  str_to_ident("alloc_number")),
                 RsToken::BinOp(BinOpToken::Minus) =>
-                    (quote_expr!(cx, s1v - s2v), quote_ty!(cx, i32)),
+                    (quote_expr!(cx, s1v - s2v),  str_to_ident("alloc_number")),
                 RsToken::EqEq =>
-                    (quote_expr!(cx, s1v == s2v), quote_ty!(cx, i32)),
+                    (quote_expr!(cx, s1v == s2v), str_to_ident("alloc_bool")),
                 RsToken::Le =>
-                    (quote_expr!(cx, s1v <= s2v), quote_ty!(cx, i32)),
+                    (quote_expr!(cx, s1v <= s2v), str_to_ident("alloc_bool")),
                 RsToken::Lt =>
-                    (quote_expr!(cx, s1v < s2v), quote_ty!(cx, i32)),
-                _ => panic!("Binop `{:?}` not yet implemented", op)
+                    (quote_expr!(cx, s1v < s2v),  str_to_ident("alloc_bool")),
+                _ => {
+                    let s = format!("Binop `{:?}` not yet implemented for numbers", op);
+                    (quote_expr!(cx, panic!($s)), str_to_ident("alloc_number"))
+                }
             };
+
+            let (se, sfun) = match op {
+                RsToken::BinOp(BinOpToken::Plus) =>
+                    (quote_expr!(cx, s1v.clone() + s2v.as_str()),  str_to_ident("alloc_string")),
+                RsToken::EqEq =>
+                    (quote_expr!(cx, s1v == s2v.as_str()), str_to_ident("alloc_bool")),
+                _ => {
+                    let s = format!("Binop `{:?}` not yet implemented for strings", op);
+                    (quote_expr!(cx, panic!($s)), str_to_ident("alloc_string"))
+                }
+            };
+
             // Have to clone s1v and s2v because if s1 is the same variable
             // as s2, then it becomes a double borrow
             quote_expr!(cx, {
                 let s1 = $s1;
+                let s1 = s1.borrow();
+                let s1 = s1.borrow();
                 let s2 = $s2;
-                let s1v = {
-                    cast!(let s1v: $ty = s1);
-                    s1v
-                };
-                let s2v = {
-                    cast!(let s2v: $ty = s2);
-                    s2v
-                };
-                alloc($e)
+                let s2 = s2.borrow();
+                let s2 = s2.borrow();
+                match (&*s1, &*s2) {
+                    (&LiaValue::Number(ref s1v), &LiaValue::Number(ref s2v)) => {
+                        let (s1v, s2v) = (*s1v, *s2v);
+                        $fun($e)
+                    },
+                    (&LiaValue::String(ref s1v), &LiaValue::String(ref s2v)) => {
+                        let (s1v, s2v) = (s1v, s2v);
+                        $sfun($se)
+                    },
+                    _ => panic!("Invalid expr")
+                }
             })
         },
         LiaExpr::Integer(n) => {
-            quote_expr!(cx, alloc($n))
+            quote_expr!(cx, alloc_number($n))
         },
         LiaExpr::String(s) => {
-            quote_expr!(cx, alloc(String::from($s)))
+            quote_expr!(cx, alloc_string(String::from($s)))
         },
         LiaExpr::Bool(b) => {
-            quote_expr!(cx, alloc($b))
+            quote_expr!(cx, alloc_bool($b))
         },
         LiaExpr::Var(id) => {
             quote_expr!(cx, $id.clone())
@@ -75,8 +96,8 @@ fn gen_expr(cx: &mut ExtCtxt, expr: LiaExpr) -> P<Expr> {
         LiaExpr::RsVar(id) => {
             let new_id = rs_ident_to_path(id);
             quote_expr!(cx, {
-                let fun: LiaClosure = Box::new(move |args: Vec<LiaAny>| $new_id(args));
-                alloc(fun)
+                let fun: LiaClosure = Box::new(move |args: Vec<LiaPtr>| $new_id(args));
+                alloc_closure(fun)
             })
         },
         LiaExpr::Object(kvs) => {
@@ -84,23 +105,22 @@ fn gen_expr(cx: &mut ExtCtxt, expr: LiaExpr) -> P<Expr> {
                 let ke = gen_expr(cx, key);
                 let ve = gen_expr(cx, value);
                 quote_expr!(cx, {
-                    let _key = $ke;
-                    let _tmp = _key.borrow();
-                    let key = _tmp.borrow();
+                    let key = $ke;
+                    cast!(let key: String = key);
                     let _val = $ve;
                     let val = _val.borrow();
-                    let slot = alloc(());
+                    let slot = alloc_null(());
                     {
                         let mut _tmp = slot.borrow_mut();
                         *_tmp = val.clone();
                     }
-                    ht.insert(key.downcast_ref::<String>().expect("Object key must be string").clone(), slot);
+                    ht.insert(key, slot);
                 })
             }).collect();
             quote_expr!(cx, {
-                let mut ht= new_obj();
+                let mut ht = new_obj();
                 $kvs;
-                alloc(ht)
+                alloc_object(ht)
             })
         },
         LiaExpr::Index(box obj, box key) => {
@@ -111,11 +131,9 @@ fn gen_expr(cx: &mut ExtCtxt, expr: LiaExpr) -> P<Expr> {
                 let key = $key;
                 let s = val_to_key(key);
                 let obj = $obj;
-                let mut _tmp = obj.borrow_mut();
-                let mut _tmp = _tmp.borrow_mut();
-                let mut ht = _tmp.downcast_mut::<LiaObject>().expect("Can only index into objects");
-                fn make_null() -> LiaAny { alloc(LiaNull) }
-                (*ht.entry(s).or_insert_with(make_null)).clone()
+                cast!(let mut ht: &LiaObject = obj);
+                fn make_null() -> LiaPtr { alloc_null(()) }
+                ht.entry(s).or_insert_with(make_null).clone()
             })
         },
         // TODO: make this a macro?
@@ -143,9 +161,8 @@ fn gen_expr(cx: &mut ExtCtxt, expr: LiaExpr) -> P<Expr> {
                     // Can't borrow_mut as this breaks recursive functions
                     quote_expr!(cx, {
                         let e = $f;
-                        let _tmp = e.borrow();
-                        let f = _tmp.borrow();
-                        (f.downcast_ref::<LiaClosure>().expect("Invalid closure"))(args)
+                        cast!(let e: LiaClosure = e);
+                        e(args)
                     })
                 }
             };
@@ -157,7 +174,7 @@ fn gen_expr(cx: &mut ExtCtxt, expr: LiaExpr) -> P<Expr> {
                 },
                 _ => {
                     exps.insert(0, quote_expr!(cx, {args.push({
-                        alloc(new_obj())
+                        alloc_object(new_obj())
                     })}));
                 }
             };
@@ -201,14 +218,19 @@ fn gen_expr(cx: &mut ExtCtxt, expr: LiaExpr) -> P<Expr> {
             // Not clear what the type of the closure is by default. Have to explicitly cast it.
             quote_expr!(cx, {
                 $copies;
-                let fun: LiaClosure = Box::new(move |args: Vec<LiaAny>| {
+                let fun: LiaClosure = Box::new(move |args: Vec<LiaPtr>| {
                     $binds;
                     $st;
-                    return alloc(());
+                    return alloc_null(());
                 });
-                alloc(fun)
+                alloc_closure(fun)
             })
         }
+        LiaExpr::Quote(toks) => quote_expr!(cx, {
+            quote_expr!(cx, {
+                $toks
+            })
+        })
     }
 }
 
@@ -216,7 +238,7 @@ fn gen_expr(cx: &mut ExtCtxt, expr: LiaExpr) -> P<Expr> {
 fn gen_stmt(cx: &mut ExtCtxt, stmt: LiaStmt) -> Vec<Stmt> {
     match stmt {
         LiaStmt::Declare(id) => {
-            vec![quote_stmt!(cx, let $id = alloc(());).expect("Invalid stmt")]
+            vec![quote_stmt!(cx, let $id = alloc_null(());).expect("Invalid stmt")]
         },
         LiaStmt::Assign(lhs, rhs) => {
             let lhs = gen_expr(cx, lhs);
@@ -225,18 +247,20 @@ fn gen_stmt(cx: &mut ExtCtxt, stmt: LiaStmt) -> Vec<Stmt> {
                 let lhs = $lhs;
                 let rhs = $rhs;
                 let made_it = {
-                    let _tmp = rhs.borrow_mut();
-                    let src = _tmp.borrow_mut();
+                    let _tmp = rhs.borrow();
+                    let src = _tmp.borrow();
                     let _tmp = lhs.borrow_mut();
                     let mut dst = _tmp.borrow_mut();
-                    if src.is::<i32>() {
-                        *dst = Box::new(*src.downcast_ref::<i32>().expect("Invalid i32"));
-                        true
-                    } else if src.is::<bool>() {
-                        *dst = Box::new(*src.downcast_ref::<bool>().expect("Invalid bool"));
-                        true
-                    } else {
-                        false
+                    match &*src {
+                        &LiaValue::Number(ref n) => {
+                            *dst = LiaValue::Number(n.clone());
+                            true
+                        },
+                        &LiaValue::Bool(ref b) => {
+                            *dst = LiaValue::Bool(b.clone());
+                            true
+                        },
+                        _ => false
                     }
                 };
                 if !made_it {
@@ -265,12 +289,12 @@ fn gen_stmt(cx: &mut ExtCtxt, stmt: LiaStmt) -> Vec<Stmt> {
                 let e = $e;
                 let _tmp = e.borrow_mut();
                 let cond = _tmp.borrow_mut();
-                let b = if cond.is::<bool>() {
-                    *cond.downcast_ref::<bool>().unwrap()
-                } else if cond.is::<i32>() {
-                    let n = *cond.downcast_ref::<i32>().unwrap();
-                    n != 0
-                } else { !cond.is::<()>() && !cond.is::<LiaNull>() };
+                let b = match &*cond {
+                    &LiaValue::Bool(ref b) => b.clone(),
+                    &LiaValue::Number(ref n) => *n != 0,
+                    &LiaValue::Null => false,
+                    _ => true,
+                };
                 if b { $if_; }
                 else { $else_; }
             }).expect("Invalid if stmt")]
@@ -282,7 +306,7 @@ fn gen_stmt(cx: &mut ExtCtxt, stmt: LiaStmt) -> Vec<Stmt> {
             vec![quote_stmt!(cx, {
                 while {
                     let e = $guard;
-                    cast!(let b: bool = e);
+                    cast!(let b: LiaBool = e);
                     b
                 } { $body; }
             }).expect("Invalid while stmt")]
@@ -296,11 +320,11 @@ fn gen_stmt(cx: &mut ExtCtxt, stmt: LiaStmt) -> Vec<Stmt> {
                     let e = $expr;
                     let keys = {
                         cast!(let obj: LiaObject = e);
-                        let keys: Vec<String> = obj.keys().map(|s| s.clone()).collect();
+                        let keys: Vec<LiaString> = obj.keys().map(|s| s.clone()).collect();
                         keys
                     };
                     for $id in keys {
-                        let $id = alloc($id);
+                        let $id = alloc_string($id);
                         $body;
                     }
                 }
@@ -323,10 +347,10 @@ pub fn gen_fn(cx: &mut ExtCtxt, mut fun: LiaFn) -> P<Item> {
     quote_item!(
         cx,
         #[allow(unreachable_code, dead_code, unused_mut, unused_assignments, unused_parens, unused_variables)]
-        fn $id (args: Vec<LiaAny>) -> LiaAny {
+        fn $id (args: Vec<LiaPtr>) -> LiaPtr {
             $binds;
             $st;
-            return alloc(());
+            return alloc_null(());
         }
     ).unwrap()
 }

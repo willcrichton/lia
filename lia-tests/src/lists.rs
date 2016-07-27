@@ -1,8 +1,4 @@
-use lia::runtime::*;
-
-pub fn _lia_call(args: Vec<LiaAny>) -> LiaAny {
-    _lia_call!(args)
-}
+use lia_runtime::*;
 
 lia! {
     function new(obj) {

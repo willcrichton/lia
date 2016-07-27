@@ -1,4 +1,4 @@
-use lia::runtime::*;
+use lia_runtime::*;
 
 lia! {
     function multiply_matrices() {
@@ -62,7 +62,7 @@ impl Matrix {
 
 #[test]
 fn matrix_test() {
-    let result: LiaAny = call!(multiply_matrices());
+    let result = call!(multiply_matrices());
     cast!(let num: i32 = result);
     assert!(num == 50);
 }

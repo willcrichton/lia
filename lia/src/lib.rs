@@ -8,4 +8,3 @@ pub mod ast;
 pub mod grammar;
 pub mod elaborate;
 pub mod codegen;
-pub mod runtime;
