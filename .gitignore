@@ -15,3 +15,6 @@ lia-sandbox
 
 lia-runtime/Cargo.lock
 lia-runtime/target
+
+lia-experimental/Cargo.lock
+lia-experimental/target

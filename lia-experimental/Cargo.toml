@@ -1,0 +1,13 @@
+[package]
+name = "lia-experimental"
+version = "0.1.0"
+authors = ["Will Crichton <wcrichto@stanford.edu>"]
+build = "build.rs"
+
+[dependencies]
+lalrpop-util = "0.12.0"
+rabbot = { path = "../../rabbot/rabbot" }
+rabbot-plugin = { path = "../../rabbot/rabbot-plugin" }
+
+[build-dependencies]
+lalrpop = "0.12.0"

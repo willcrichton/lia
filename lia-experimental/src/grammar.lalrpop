@@ -1,0 +1,28 @@
+use std::str::FromStr;
+use super::ast::term::{View, Term, into};
+use rabbot::var::Var;
+
+grammar;
+
+pub Block: Term = {
+    "let" <id:Id> "=" <bind:Expr> ";" <body:Expr> =>
+        into(View::Let((bind, (id, body)))),
+    <l:Expr> ";" <r:Expr> =>
+        into(View::Let((l, (Var::new("dummy".to_string()), r))))
+};
+
+Expr: Term = {
+    <l:Expr> "+" <r:Atom> => into(View::Plus((l, r))),
+    <l:Expr> <r:Atom> => into(View::App((l, r))),
+    Atom
+};
+
+Atom: Term = {
+    r"[1-9][0-9]*" => into(View::Number(i32::from_str(<>).unwrap())),
+    Id => into(View::Var(<>)),
+    "(" <e:Expr> ")" => e,
+    "{" <e:Block> "}" => e,
+    "fn" <id:Id> "=>" "{" <e:Expr> "}" => into(View::Lam((id, e)))
+};
+
+Id: Var = { r"[a-zA-Z][a-zA-Z0-9]*" => Var::new((<>).to_string()) };
