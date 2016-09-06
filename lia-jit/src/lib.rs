@@ -1,5 +1,4 @@
 #![feature(plugin, rustc_private, box_syntax)]
-#![plugin(lia_plugin)]
 
 extern crate rustc;
 extern crate rustc_driver;
@@ -7,24 +6,26 @@ extern crate rustc_lint;
 extern crate rustc_metadata;
 extern crate rustc_llvm;
 extern crate rustc_resolve;
+extern crate rustc_trans;
 #[macro_use] extern crate syntax;
 extern crate getopts;
 
 extern crate llvm;
 extern crate llvm_sys;
-#[macro_use] extern crate lia;
 
+use rustc_trans::ModuleSource;
 use rustc_driver::{CompilerCalls, Compilation};
 use rustc_driver::driver::CompileController;
 use rustc::session::Session;
 use rustc::middle::cstore::LinkagePreference;
 use syntax::codemap::FileLoader;
-use std::ffi::{CString, CStr};
+use std::ffi::CString;
 use std::io;
 use std::path::{PathBuf, Path};
 use std::rc::Rc;
 use std::cell::RefCell;
 
+#[derive(Clone)]
 struct JitInput {
     input: String
 }
@@ -48,8 +49,7 @@ impl FileLoader for JitInput {
 #[allow(dead_code)]
 struct JitState<'a> {
     ctx: &'a llvm::CSemiBox<'a, llvm::Context>,
-    engine: llvm::JitEngine<'a>,
-    main_module: llvm::CSemiBox<'a, llvm::Module>,
+    engine: llvm::CSemiBox<'a, llvm::JitEngine>,
     other_modules: Vec<llvm::CSemiBox<'a, llvm::Module>>,
     eval: bool,
     name: String,
@@ -64,7 +64,9 @@ impl<'a> JitState<'a> {
         self.engine.add_module(llmod);
         if self.eval {
             let fun = self.engine.find_function(self.name.as_str()).expect("No eval fn");
-            self.engine.with_function(fun, |fun: extern fn(())| fun(()));
+            unsafe {
+                self.engine.with_function_unchecked(fun, |fun: extern fn(())| fun(()))
+            }
         }
     }
 }
@@ -79,17 +81,18 @@ pub struct Jit<'a> {
 }
 
 impl<'a> Jit<'a> {
-    pub fn new(ctx: &'a llvm::CSemiBox<'a, llvm::Context>, opts: JitOptions) -> Jit<'a> {
-        use llvm::{Module, JitEngine, ExecutionEngine};
-        let module = Module::new("_jit_main", &ctx);
-        let engine = JitEngine::new(&module, llvm::JitOptions {opt_level: 0})
+    pub fn new(ctx: &'a llvm::CSemiBox<'a, llvm::Context>,
+               module: &'a llvm::Module,
+               opts: JitOptions) -> Jit<'a>
+    {
+        use llvm::{JitEngine, ExecutionEngine};
+        let engine = JitEngine::new(module, llvm::JitOptions {opt_level: 0})
             .expect("Jit not initialized");
         Jit {
             opts: opts,
             state: Rc::new(RefCell::new(JitState {
                 ctx: ctx,
                 engine: engine,
-                main_module: module,
                 other_modules: vec![],
                 eval: false,
                 name: "".to_string(),
@@ -149,15 +152,12 @@ impl<'a> Jit<'a> {
                 crate_name,
                 self.opts.sysroot)
             .split(' ').map(|s| s.to_string()).collect();
-        rustc_driver::run_compiler_with_file_loader(&args, self, box input);
+        match rustc_driver::run_compiler_with_file_loader(&args, self, box input) {
+            (Ok(_), _) => (),
+            (Err(n), _) => panic!("Compilation error {}", n)
+        };
+        rustc_driver::driver::reset_thread_local_state();
     }
-}
-
-/// Returns last error from LLVM wrapper code.
-fn llvm_error() -> String {
-    String::from_utf8_lossy(
-        unsafe { CStr::from_ptr(rustc_llvm::LLVMRustGetLastError()).to_bytes() })
-        .into_owned()
 }
 
 impl<'a> CompilerCalls<'a> for Jit<'a> {
@@ -174,31 +174,35 @@ impl<'a> CompilerCalls<'a> for Jit<'a> {
             let trans = state.trans.unwrap();
             assert_eq!(trans.modules.len(), 1);
 
-            let rs_llmod = trans.modules[0].llmod;
+            let rs_llmod = match trans.modules[0].source {
+                ModuleSource::Translated(llmod) => llmod.llmod,
+                ModuleSource::Preexisting(_) => unreachable!()
+            };
             assert!(!rs_llmod.is_null());
 
-            unsafe { rustc_llvm::LLVMDumpModule(rs_llmod) };
+            //unsafe { rustc_llvm::LLVMDumpModule(rs_llmod) };
 
             let crates = state.session.cstore.used_crates(LinkagePreference::RequireDynamic);
 
             // Collect crates used in the session. Reverse order finds dependencies first.
             let deps: Vec<PathBuf> =
                 crates.into_iter().rev().filter_map(|(_, p)| p).collect();
+
             for path in deps {
-                println!("Loading dep: {:?}", path);
+                // println!("Loading dep: {:?}", path);
                 let s = match path.as_os_str().to_str() {
                     Some(s) => s,
                     None => panic!(
                         "Could not convert crate path to UTF-8 string: {:?}", path)
                 };
                 let cs = CString::new(s).unwrap();
-                let res = unsafe { rustc_llvm::LLVMRustLoadDynamicLibrary(cs.as_ptr()) };
-                if res == 0 {
-                    panic!("Failed to load crate {:?}: {}", path.display(), llvm_error());
+                let res = unsafe { llvm_sys::support::LLVMLoadLibraryPermanently(cs.as_ptr()) };
+                if res != 0 {
+                    panic!("Failed to load crate {:?}", path.display());
                 }
             }
 
-            let llmod: &mut llvm::Module =
+            let llmod: &'a llvm::Module =
                 (rs_llmod as llvm_sys::prelude::LLVMModuleRef).into();
             let llmod = llmod.clone();
             llmod.verify().expect("Module invalid");
@@ -219,9 +223,10 @@ macro_rules! make_jit {
             Context::new()
         };
         let _jit_ctx = _jit_ctx.as_semi();
+        let module = llvm::Module::new("_jit_main", &_jit_ctx);
         let mut $jit = {
             use lia_jit::Jit;
-            Jit::new(_jit_ctx, $opts)
+            Jit::new(_jit_ctx, &*module, $opts)
         };
     }
 }
@@ -242,9 +247,9 @@ mod test {
                     Context::new()
                 };
                 let _jit_ctx = _jit_ctx.as_semi();
-                let mut jit = {
-                    Jit::new(_jit_ctx, JitOptions { sysroot: SYSROOT.to_string() })
-                };
+                let module = ::llvm::Module::new("_jit_main", &_jit_ctx);
+                let mut jit =
+                    Jit::new(_jit_ctx, &module, JitOptions { sysroot: SYSROOT.to_string() });
                 let input = $s.to_string();
                 jit.run(input);
             }
