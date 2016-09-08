@@ -18,3 +18,5 @@ lia-runtime/target
 
 lia-experimental/Cargo.lock
 lia-experimental/target
+lia-experimental/src/grammar.rs
+lia-experimental/src/lexer.rs
