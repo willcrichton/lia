@@ -27,11 +27,13 @@ use std::io;
 use std::path::{PathBuf, Path};
 use std::rc::Rc;
 use std::cell::RefCell;
-use std::any::Any;
 use std::convert::From;
-use llvm::{ExecutionEngine, JitEngine};
+use std::mem;
+use std::ptr;
+use llvm::{ExecutionEngine, JitEngine, Compile};
 use llvm_sys::execution_engine::{LLVMExecutionEngineRef as LLVMEngine};
 
+pub type JitFun<A, R> = Box<extern fn(A) -> R>;
 
 #[derive(Clone)]
 struct JitInput {
@@ -60,19 +62,19 @@ struct JitState<'a, Eng>
     other_modules: Vec<llvm::CSemiBox<'a, llvm::Module>>,
     name: String,
     anon_count: u32,
-    return_slot: Box<Any>,
+    return_slot: *const i32,
     funs: String,
 }
 
 impl<'a> JitState<'a, JitEngine>
 {
-    fn gen_fn(&self, llmod: &llvm::CSemiBox<'a, llvm::Module>)
-              -> Rc<extern fn(()) -> i32>
-    {
+    fn llvm_to_fun(&mut self, llmod: &llvm::CSemiBox<'a, llvm::Module>) {
         self.engine.add_module(llmod);
         let fun = self.engine.find_function(self.name.as_str()).expect("Function not found");
-        let fun = unsafe { self.engine.get_function(fun) };
-        Rc::new(fun)
+        self.return_slot = unsafe {
+            let fun: extern fn(()) -> () = self.engine.get_function(fun);
+            mem::transmute(fun)
+        };
     }
 }
 
@@ -100,12 +102,13 @@ impl<'a> Jit<'a, JitEngine> {
                 name: "".to_string(),
                 funs: "".to_string(),
                 anon_count: 0u32,
-                return_slot: box 0
+                return_slot: ptr::null(),
             }))
         }
     }
 
-    pub fn gen_fun(&mut self, input: String) -> Result<Rc<extern fn(()) -> i32>, String>
+    pub fn gen_fun<A, R>(&mut self, input: String) -> Result<JitFun<A, R>, String>
+        where A: Compile<'a> + 'static, R: Compile<'a> + 'static
     {
         use rustc_driver;
         use syntax::parse;
@@ -123,10 +126,10 @@ impl<'a> Jit<'a, JitEngine> {
                     ItemKind::Fn(decl, unsafety, constness, _, generics, body) => {
                         let name_u = str_to_ident(format!("_{}", name.name.as_str()).as_str());
                         let extern_s = pprust::fun_to_string(
-                            &decl.clone().unwrap(), unsafety, constness.node,
+                            &decl.clone().unwrap(), unsafety, constness,
                             name_u.clone(), &generics);
                         let decl_s = pprust::fun_to_string(
-                            &decl.clone().unwrap(), unsafety, constness.node,
+                            &decl.clone().unwrap(), unsafety, constness,
                             name.clone(), &generics);
                         let args = decl.inputs.iter()
                             .map(|arg| pprust::pat_to_string(&arg.pat.clone().unwrap()))
@@ -173,14 +176,11 @@ impl<'a> Jit<'a, JitEngine> {
         };
         rustc_driver::driver::reset_thread_local_state();
 
-        {
-            let mut state = self.state.borrow_mut();
-            state.funs = format!("{}\n{}", state.funs, decl);
-            match state.return_slot.downcast_ref::<Rc<extern fn(()) -> i32>>() {
-                Some(f) => Ok(f.clone()),
-                None => Err("Incorrect type".to_string())
-            }
-        }
+        let mut state = self.state.borrow_mut();
+        state.funs = format!("{}\n{}", state.funs, decl);
+        Ok(box unsafe {
+            mem::transmute(state.return_slot)
+        })
     }
 }
 
@@ -231,13 +231,20 @@ impl<'a> CompilerCalls<'a> for Jit<'a, JitEngine> {
             llmod.verify().expect("Module invalid");
 
             let mut state = jit_state.borrow_mut();
-            let fun = state.gen_fn(&llmod);
-            state.return_slot = box fun;
+            state.llvm_to_fun(&llmod);
 
             state.other_modules.push(llmod);
 
         });
         cc
+    }
+}
+
+pub fn get_sysroot() -> String {
+    use std::env;
+    match env::var("SYSROOT") {
+        Ok(sysroot) => sysroot,
+        Err(_) => panic!("SYSROOT env var not set")
     }
 }
 
@@ -260,28 +267,27 @@ macro_rules! make_jit {
 mod test {
     use super::*;
 
-    static SYSROOT: &'static str =
-        "/Users/will/.multirust/toolchains/nightly-x86_64-apple-darwin";
-
     macro_rules! make_test {
-        ($fun:ident, $s:expr) => {
+        ($fun:ident, $code:expr, $e:expr) => {
             #[test]
             fn $fun() {
-                let _jit_ctx = {
-                    use llvm::Context;
-                    Context::new()
-                };
+                let _jit_ctx = ::llvm::Context::new();
                 let _jit_ctx = _jit_ctx.as_semi();
                 let module = ::llvm::Module::new("_jit_main", &_jit_ctx);
-                let mut jit =
-                    Jit::new(_jit_ctx, &module, JitOptions { sysroot: SYSROOT.to_string() });
-                let input = $s.to_string();
-                jit.gen_fun(input);
+                let engine = {
+                    use llvm::ExecutionEngine;
+                    ::llvm::JitEngine::new(&module, ::llvm::JitOptions {opt_level: 0})
+                        .expect("Jit not initialized")
+                };
+                let mut jit = Jit::new(engine, JitOptions { sysroot: get_sysroot() });
+                let input = $code.to_string();
+                let fun: JitFun<(), i32> = jit.gen_fun(input).expect("Invalid fun");
+                assert_eq!(fun(()), $e);
             }
         }
     }
 
     //make_test!(compile_test, r#"#[no_mangle] pub fn test_add(a: i32, b: i32) -> i32 { a + b }"#);
-    //make_test!(expr_test, "1 + 2");
+    make_test!(expr_test, "fn foo() -> i32 { 1 + 2 }", 3);
     // make_test!(print_test, "{println!(\"hello world\");}");
 }

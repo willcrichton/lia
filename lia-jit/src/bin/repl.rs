@@ -46,7 +46,7 @@ fn run<'a>(st: &mut State<'a>, input: String) -> Result<(), String> {
         }
     };
 
-    let fun = st.jit.gen_fun(input)?;
+    let fun = st.jit.gen_fun::<(),()>(input)?;
     fun(());
 
     Ok(())
@@ -54,15 +54,13 @@ fn run<'a>(st: &mut State<'a>, input: String) -> Result<(), String> {
 
 fn repl(matches: getopts::Matches) {
     use std::io::{stdin, stdout, Write};
-    use lia_jit::JitOptions;
+    use lia_jit::{JitOptions, get_sysroot};
 
     if !matches.free.is_empty() {
         panic!("Need to handle input files");
     }
 
-    let sysroot =
-        "/Users/will/.multirust/toolchains/nightly-x86_64-apple-darwin".to_string();
-    make_jit!(jit, JitOptions { sysroot: sysroot });
+    make_jit!(jit, JitOptions { sysroot: get_sysroot() });
     let mut st = State { jit: jit, anon_count: 0 };
 
     loop {

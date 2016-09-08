@@ -8,7 +8,7 @@ extern crate syntax;
 extern crate llvm;
 
 use std::io::BufReader;
-use lia_jit::JitOptions;
+use lia_jit::{JitOptions, get_sysroot};
 use llvm::ExecutionEngine;
 
 use token::Token;
@@ -23,9 +23,6 @@ mod ast;
 mod grammar;
 mod interpreter;
 
-static SYSROOT: &'static str =
-    "/Users/will/.multirust/toolchains/nightly-x86_64-apple-darwin";
-
 pub fn compile(input: String) -> Term {
     let input = BufReader::new(input.as_bytes());
     let lexer = Lexer::new(input);
@@ -38,7 +35,7 @@ pub fn compile(input: String) -> Term {
     let mut loader = syntax::ext::base::DummyMacroLoader;
     let mut cx = syntax::ext::base::ExtCtxt::new(&sess, cfg, ecfg, &mut loader);
 
-    make_jit!(jit, JitOptions { sysroot: SYSROOT.to_string() });
+    make_jit!(jit, JitOptions { sysroot: get_sysroot() });
 
     // Compiler complains if we use the canonical return form. ¯\_(ツ)_/¯
     let val = interpreter::eval(&mut EvalState { cx: cx, jit: jit }, abt);
@@ -64,6 +61,10 @@ let x = fn y => { y + 1 };
 
     #[test]
     fn quote() {
-        println!("{:?}", compile("(% foo % 0)".to_string()));
+        let result = compile("
+let incr = $rs { fn foo(x: i32) -> i32 { x + 1 } };
+(incr 1)".to_string());
+        bind!(View::Number{n} = result);
+        assert_eq!(n, 2);
     }
 }

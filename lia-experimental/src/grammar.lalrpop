@@ -20,8 +20,8 @@ extern {
         Rbrace => Token::Rbrace,
         Fun => Token::Fun,
         Arrow => Token::Arrow,
-        Quote => Token::Quote(<String>),
-        IdT => Token::Id(<String>)
+        QuoteChar => Token::QuoteChar(<String>),
+        IdT => Token::Id(<String>),
     }
 }
 
@@ -45,7 +45,7 @@ Atom: Term = {
     Lparen <e:Block> Rparen => e,
     Lbrace <e:Block> Rbrace => e,
     Fun <id:Id> Arrow Lbrace <e:Expr> Rbrace => term::into(TermV::Lam(((id, typ::into(TypV::Number)), e))),
-    Quote => term::into(TermV::Quote(<>.to_string())),
+    Lbrace <chrs:QuoteChar+> Rbrace => term::into(TermV::Quote(chrs.join(""))),
 };
 
 Id: Var = { IdT => Var::new(<>) };

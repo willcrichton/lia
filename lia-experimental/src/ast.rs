@@ -12,7 +12,6 @@ rabbot! {
         Plus((Term, Term)),
         Lam((Binding<Term>, Typ) . Term),
         Let((Term, Binding<Term> . Term)),
-        App((Term, Term)),
-        Foreign
+        App((Term, Term))
     }
 }

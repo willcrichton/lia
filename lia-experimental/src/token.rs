@@ -12,5 +12,6 @@ pub enum Token {
     Fun,
     Arrow,
     Id(String),
-    Quote(String)
+    Quote(String),
+    QuoteChar(String),
 }
