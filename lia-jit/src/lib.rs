@@ -19,11 +19,19 @@ use rustc_driver::driver::CompileController;
 use rustc::session::Session;
 use rustc::middle::cstore::LinkagePreference;
 use syntax::codemap::FileLoader;
+use syntax::print::pprust;
+use syntax::ast::ItemKind;
+use syntax::parse::token::str_to_ident;
 use std::ffi::CString;
 use std::io;
 use std::path::{PathBuf, Path};
 use std::rc::Rc;
 use std::cell::RefCell;
+use std::any::Any;
+use std::convert::From;
+use llvm::{ExecutionEngine, JitEngine};
+use llvm_sys::execution_engine::{LLVMExecutionEngineRef as LLVMEngine};
+
 
 #[derive(Clone)]
 struct JitInput {
@@ -44,30 +52,27 @@ impl FileLoader for JitInput {
     fn read_file(&self, _: &Path) -> io::Result<String> { Ok(self.input.clone()) }
 }
 
-// Even though we don't use ctx, need to have it live in here as the engine
-// is tied to its lifetime.
 #[allow(dead_code)]
-struct JitState<'a> {
-    ctx: &'a llvm::CSemiBox<'a, llvm::Context>,
-    engine: llvm::CSemiBox<'a, llvm::JitEngine>,
+struct JitState<'a, Eng>
+    where Eng: ExecutionEngine<'a>, LLVMEngine: From<&'a Eng>
+{
+    engine: llvm::CSemiBox<'a, Eng>,
     other_modules: Vec<llvm::CSemiBox<'a, llvm::Module>>,
-    eval: bool,
     name: String,
     anon_count: u32,
+    return_slot: Box<Any>,
+    funs: String,
 }
 
-static EVAL_FN: &'static str = "_jit_eval";
-
-impl<'a> JitState<'a> {
-    fn process_llvm(&self, llmod: &llvm::CSemiBox<'a, llvm::Module>) {
-        use llvm::*;
+impl<'a> JitState<'a, JitEngine>
+{
+    fn gen_fn(&self, llmod: &llvm::CSemiBox<'a, llvm::Module>)
+              -> Rc<extern fn(()) -> i32>
+    {
         self.engine.add_module(llmod);
-        if self.eval {
-            let fun = self.engine.find_function(self.name.as_str()).expect("No eval fn");
-            unsafe {
-                self.engine.with_function_unchecked(fun, |fun: extern fn(())| fun(()))
-            }
-        }
+        let fun = self.engine.find_function(self.name.as_str()).expect("Function not found");
+        let fun = unsafe { self.engine.get_function(fun) };
+        Rc::new(fun)
     }
 }
 
@@ -75,92 +80,111 @@ pub struct JitOptions {
     pub sysroot: String
 }
 
-pub struct Jit<'a> {
-    state: Rc<RefCell<JitState<'a>>>,
+pub struct Jit<'a, Eng>
+    where Eng: ExecutionEngine<'a>, LLVMEngine: From<&'a Eng>
+{
+    state: Rc<RefCell<JitState<'a, Eng>>>,
     opts: JitOptions,
 }
 
-impl<'a> Jit<'a> {
-    pub fn new(ctx: &'a llvm::CSemiBox<'a, llvm::Context>,
-               module: &'a llvm::Module,
-               opts: JitOptions) -> Jit<'a>
+impl<'a> Jit<'a, JitEngine> {
+    pub fn new(engine: llvm::CSemiBox<'a, JitEngine>,
+               opts: JitOptions)
+               -> Jit<'a, JitEngine>
     {
-        use llvm::{JitEngine, ExecutionEngine};
-        let engine = JitEngine::new(module, llvm::JitOptions {opt_level: 0})
-            .expect("Jit not initialized");
         Jit {
             opts: opts,
             state: Rc::new(RefCell::new(JitState {
-                ctx: ctx,
                 engine: engine,
                 other_modules: vec![],
-                eval: false,
                 name: "".to_string(),
+                funs: "".to_string(),
                 anon_count: 0u32,
+                return_slot: box 0
             }))
         }
     }
 
-    pub fn run(&mut self, input: String) {
+    pub fn gen_fun(&mut self, input: String) -> Result<Rc<extern fn(()) -> i32>, String>
+    {
         use rustc_driver;
         use syntax::parse;
 
         let crate_name = "jit".to_string();
         let sess = parse::ParseSess::new();
 
-        let (input, eval, name) = match parse::parse_item_from_source_str(
+        let (input, name, decl) = match parse::parse_item_from_source_str(
             crate_name.clone(), input.clone(), vec![], &sess)
         {
             Ok(Some(item)) => {
-                (input, false, format!("{}", item.unwrap().ident))
-            },
-            err => {
-                if let Err(mut err) = err {
-                    err.cancel();
-                }
-
-                match parse::parse_expr_from_source_str(
-                    crate_name.clone(), input.clone(), vec![], &sess)
-                {
-                    Ok(_) => {
-                        let mut state = self.state.borrow_mut();
-                        let anon_fn = format!("{}_{}", EVAL_FN, state.anon_count);
-                        state.anon_count += 1;
-                        (format!(r#"#[no_mangle] fn {} () {{ println!("{{:?}}", {{ {} }}) }}"#, anon_fn, input),
-                         true,
-                         anon_fn)
-                    },
-                    Err(mut err) => {
-                        err.cancel();
-                        println!("Input was neither expression nor item");
-                        return;
+                let item = item.unwrap();
+                let name = item.ident;
+                let (input, decl) = match item.node {
+                    ItemKind::Fn(decl, unsafety, constness, _, generics, body) => {
+                        let name_u = str_to_ident(format!("_{}", name.name.as_str()).as_str());
+                        let extern_s = pprust::fun_to_string(
+                            &decl.clone().unwrap(), unsafety, constness.node,
+                            name_u.clone(), &generics);
+                        let decl_s = pprust::fun_to_string(
+                            &decl.clone().unwrap(), unsafety, constness.node,
+                            name.clone(), &generics);
+                        let args = decl.inputs.iter()
+                            .map(|arg| pprust::pat_to_string(&arg.pat.clone().unwrap()))
+                            .collect::<Vec<String>>()
+                            .join(",");
+                        let block = pprust::block_to_string(&body.unwrap());
+                        (format!("#[no_mangle] {} {{ {} }} \
+                                  #[no_mangle] {} {{ {}({}) }}",
+                                 extern_s, block, decl_s, name_u, args),
+                         format!("extern {{ {}; }} \
+                                  #[no_mangle] {} {{ unsafe {{ {}({}) }} }}",
+                                 extern_s, decl_s, name_u, args))
                     }
-                }
+                    _ => return Err("Not a function".to_string())
+                };
+                (input, name, decl)
             }
+            Err(mut err) => {
+                err.cancel();
+                return Err(err.message.clone());
+            },
+            Ok(None) => { return Err("Bad parse".to_string()); }
         };
 
-        {
+        let input = {
             let mut state = self.state.borrow_mut();
-            state.eval = eval;
-            state.name = name;
-        }
+            let input = format!("{}\n#[no_mangle] {}", state.funs, input);
+            state.name = name.name.as_str().to_string();
+            input
+        };
 
-        let input = JitInput::new(input);
+        let jit_input = JitInput::new(input.clone());
         let args: Vec<String> =
             format!(
                 "_ {} --sysroot {} --crate-type dylib --cap-lints allow",
                 crate_name,
                 self.opts.sysroot)
             .split(' ').map(|s| s.to_string()).collect();
-        match rustc_driver::run_compiler_with_file_loader(&args, self, box input) {
-            (Ok(_), _) => (),
-            (Err(n), _) => panic!("Compilation error {}", n)
+
+        if let (Err(n), _) =
+            rustc_driver::run_compiler_with_file_loader(&args, self, box jit_input)
+        {
+            return Err(format!("Compilation error {}", n));
         };
         rustc_driver::driver::reset_thread_local_state();
+
+        {
+            let mut state = self.state.borrow_mut();
+            state.funs = format!("{}\n{}", state.funs, decl);
+            match state.return_slot.downcast_ref::<Rc<extern fn(()) -> i32>>() {
+                Some(f) => Ok(f.clone()),
+                None => Err("Incorrect type".to_string())
+            }
+        }
     }
 }
 
-impl<'a> CompilerCalls<'a> for Jit<'a> {
+impl<'a> CompilerCalls<'a> for Jit<'a, JitEngine> {
     fn build_controller(&mut self,
                         _: &Session,
                         _: &getopts::Matches)
@@ -189,7 +213,6 @@ impl<'a> CompilerCalls<'a> for Jit<'a> {
                 crates.into_iter().rev().filter_map(|(_, p)| p).collect();
 
             for path in deps {
-                // println!("Loading dep: {:?}", path);
                 let s = match path.as_os_str().to_str() {
                     Some(s) => s,
                     None => panic!(
@@ -208,8 +231,11 @@ impl<'a> CompilerCalls<'a> for Jit<'a> {
             llmod.verify().expect("Module invalid");
 
             let mut state = jit_state.borrow_mut();
-            state.process_llvm(&llmod);
+            let fun = state.gen_fn(&llmod);
+            state.return_slot = box fun;
+
             state.other_modules.push(llmod);
+
         });
         cc
     }
@@ -218,16 +244,15 @@ impl<'a> CompilerCalls<'a> for Jit<'a> {
 #[macro_export]
 macro_rules! make_jit {
     ($jit:ident, $opts:expr) => {
-        let _jit_ctx = {
-            use llvm::Context;
-            Context::new()
-        };
+        let _jit_ctx = ::llvm::Context::new();
         let _jit_ctx = _jit_ctx.as_semi();
-        let module = llvm::Module::new("_jit_main", &_jit_ctx);
-        let mut $jit = {
-            use lia_jit::Jit;
-            Jit::new(_jit_ctx, &*module, $opts)
+        let module = ::llvm::Module::new("_jit_main", &_jit_ctx);
+        let engine = {
+            use llvm::ExecutionEngine;
+            ::llvm::JitEngine::new(&module, ::llvm::JitOptions {opt_level: 0})
+                .expect("Jit not initialized")
         };
+        let $jit = ::lia_jit::Jit::new(engine, $opts);
     }
 }
 
@@ -251,12 +276,12 @@ mod test {
                 let mut jit =
                     Jit::new(_jit_ctx, &module, JitOptions { sysroot: SYSROOT.to_string() });
                 let input = $s.to_string();
-                jit.run(input);
+                jit.gen_fun(input);
             }
         }
     }
 
     //make_test!(compile_test, r#"#[no_mangle] pub fn test_add(a: i32, b: i32) -> i32 { a + b }"#);
     //make_test!(expr_test, "1 + 2");
-    make_test!(print_test, "{println!(\"hello world\");}");
+    // make_test!(print_test, "{println!(\"hello world\");}");
 }

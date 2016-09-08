@@ -6,8 +6,13 @@ build = "build.rs"
 
 [dependencies]
 lalrpop-util = "0.12.0"
-rabbot = { path = "../../rabbot/rabbot" }
+rabbot = { path = "../../rabbot/rabbot", version = "0.1.1" }
 rabbot-plugin = { path = "../../rabbot/rabbot-plugin" }
+lia-jit = { path = "../lia-jit" }
+llvm-alt = "0.5.0"
+rustlex_codegen = { version = "0.3.3", features = ["with-syntex"] }
 
 [build-dependencies]
+rustlex_codegen = { version = "0.3.3", features = ["with-syntex"] }
+syntex          = { version = "0.32.0" }
 lalrpop = "0.12.0"

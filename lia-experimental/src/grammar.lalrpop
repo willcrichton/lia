@@ -1,28 +1,51 @@
 use std::str::FromStr;
-use super::ast::term::{View, Term, into};
+use super::token::Token;
+use super::ast::{term, typ};
+use super::ast::term::{Term, View as TermV};
+use super::ast::typ::{Typ, View as TypV};
 use rabbot::var::Var;
 
 grammar;
 
+extern {
+    enum Token {
+        Let => Token::Let,
+        Eq => Token::Eq,
+        Semi => Token::Semi,
+        Plus => Token::Plus,
+        Int => Token::Int(<i32>),
+        Lparen => Token::Lparen,
+        Rparen => Token::Rparen,
+        Lbrace => Token::Lbrace,
+        Rbrace => Token::Rbrace,
+        Fun => Token::Fun,
+        Arrow => Token::Arrow,
+        Quote => Token::Quote(<String>),
+        IdT => Token::Id(<String>)
+    }
+}
+
 pub Block: Term = {
-    "let" <id:Id> "=" <bind:Expr> ";" <body:Expr> =>
-        into(View::Let((bind, (id, body)))),
-    <l:Expr> ";" <r:Expr> =>
-        into(View::Let((l, (Var::new("dummy".to_string()), r))))
+    Let <id:Id> Eq <bind:Expr> Semi <body:Expr> =>
+        term::into(TermV::Let((bind, (id, body)))),
+    <l:Block> Semi <r:Expr> =>
+        term::into(TermV::Let((l, (Var::new("dummy".to_string()), r)))),
+    Expr
 };
 
 Expr: Term = {
-    <l:Expr> "+" <r:Atom> => into(View::Plus((l, r))),
-    <l:Expr> <r:Atom> => into(View::App((l, r))),
+    <l:Expr> Plus <r:Atom> => term::into(TermV::Plus((l, r))),
+    <l:Expr> <r:Atom> => term::into(TermV::App((l, r))),
     Atom
 };
 
 Atom: Term = {
-    r"[1-9][0-9]*" => into(View::Number(i32::from_str(<>).unwrap())),
-    Id => into(View::Var(<>)),
-    "(" <e:Expr> ")" => e,
-    "{" <e:Block> "}" => e,
-    "fn" <id:Id> "=>" "{" <e:Expr> "}" => into(View::Lam((id, e)))
+    Int => term::into(TermV::Number(<>)),
+    Id => term::into(TermV::Var(<>)),
+    Lparen <e:Block> Rparen => e,
+    Lbrace <e:Block> Rbrace => e,
+    Fun <id:Id> Arrow Lbrace <e:Expr> Rbrace => term::into(TermV::Lam(((id, typ::into(TypV::Number)), e))),
+    Quote => term::into(TermV::Quote(<>.to_string())),
 };
 
-Id: Var = { r"[a-zA-Z][a-zA-Z0-9]*" => Var::new((<>).to_string()) };
+Id: Var = { IdT => Var::new(<>) };
