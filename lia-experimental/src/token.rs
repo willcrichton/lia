@@ -11,7 +11,10 @@ pub enum Token {
     Rbrace,
     Fun,
     Arrow,
+    String(String),
     Id(String),
-    Quote(String),
     QuoteChar(String),
+    QuoteMarker,
+    Splice(String),
+    TyPrimitive(String),
 }

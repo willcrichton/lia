@@ -1,6 +1,7 @@
 rabbot! {
     sort Typ {
         Number,
+        String,
         Arrow((Typ, Typ)),
         ForAll(Binding<Typ> . Typ),
         Exists(Binding<Typ> . Typ)
@@ -8,9 +9,10 @@ rabbot! {
 
     sort Term {
         Number(i32),
-        Quote(String),
+        String(String),
+        Quote(Vec<Term>),
         Plus((Term, Term)),
-        Lam((Binding<Term>, Typ) . Term),
+        Lam(Binding<Term> . Term),
         Let((Term, Binding<Term> . Term)),
         App((Term, Term))
     }

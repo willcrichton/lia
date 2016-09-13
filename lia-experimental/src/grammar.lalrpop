@@ -18,18 +18,26 @@ extern {
         Rparen => Token::Rparen,
         Lbrace => Token::Lbrace,
         Rbrace => Token::Rbrace,
+        QuoteMarker => Token::QuoteMarker,
         Fun => Token::Fun,
         Arrow => Token::Arrow,
         QuoteChar => Token::QuoteChar(<String>),
+        Splice => Token::Splice(<String>),
         IdT => Token::Id(<String>),
+        TyPrimitive => Token::TyPrimitive(<String>),
+        String => Token::String(<String>),
     }
 }
 
+Typ: Typ = {
+
+};
+
 pub Block: Term = {
-    Let <id:Id> Eq <bind:Expr> Semi <body:Expr> =>
+    Let <id:Id> Eq <bind:Expr> Semi <body:Block> =>
         term::into(TermV::Let((bind, (id, body)))),
-    <l:Block> Semi <r:Expr> =>
-        term::into(TermV::Let((l, (Var::new("dummy".to_string()), r)))),
+    <l:Expr> Semi <r:Block> =>
+        term::into(TermV::Let((l, (Var::from_string("dummy".to_string()), r)))),
     Expr
 };
 
@@ -42,10 +50,29 @@ Expr: Term = {
 Atom: Term = {
     Int => term::into(TermV::Number(<>)),
     Id => term::into(TermV::Var(<>)),
+    String => term::into(TermV::String(<>)),
     Lparen <e:Block> Rparen => e,
     Lbrace <e:Block> Rbrace => e,
-    Fun <id:Id> Arrow Lbrace <e:Expr> Rbrace => term::into(TermV::Lam(((id, typ::into(TypV::Number)), e))),
-    Lbrace <chrs:QuoteChar+> Rbrace => term::into(TermV::Quote(chrs.join(""))),
+    Fun <id:Id> Arrow Lbrace <e:Expr> Rbrace => term::into(TermV::Lam((id, e))),
+    QuoteMarker Lbrace <q:Quote?> Rbrace => term::into(TermV::Quote(match q {
+        Some(q) => q,
+        None => vec![]
+    }))
 };
 
-Id: Var = { IdT => Var::new(<>) };
+Quote: Vec<Term> = {
+    <q:QuoteChar> <qs:Quote> => {
+         let mut qs = qs;
+         qs.insert(0, term::into(TermV::String(q)));
+         qs
+     },
+     <s:Splice> <qs:Quote> => {
+         let mut qs = qs;
+         qs.insert(0, term::into(TermV::Var(Var::from_string(s))));
+         qs
+     },
+     QuoteChar => vec![term::into(TermV::String(<>))],
+     Splice => vec![term::into(TermV::Var(Var::from_string(<>)))]
+};
+
+Id: Var = { IdT => Var::from_string(<>) };
