@@ -1,5 +1,8 @@
 rabbot! {
-    sort Typ {
+    use mark::Mark;
+
+    enum Typ {mark: Mark} {
+        Hole,
         Number,
         String,
         Arrow((Typ, Typ)),
@@ -7,7 +10,7 @@ rabbot! {
         Exists(Binding<Typ> . Typ)
     }
 
-    sort Term {
+    enum Term {mark: Mark, typ: Typ} {
         Number(i32),
         String(String),
         Quote(Vec<Term>),

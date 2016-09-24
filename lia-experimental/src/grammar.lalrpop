@@ -1,5 +1,6 @@
 use std::str::FromStr;
 use super::token::Token;
+use super::mark::{Mark, DUMMY};
 use super::ast::{term, typ};
 use super::ast::term::{Term, View as TermV};
 use super::ast::typ::{Typ, View as TypV};
@@ -8,6 +9,8 @@ use rabbot::var::Var;
 grammar;
 
 extern {
+    type Location = u32;
+
     enum Token {
         Let => Token::Let,
         Eq => Token::Eq,
@@ -29,50 +32,73 @@ extern {
     }
 }
 
+Meta<S, T>: term::Meta<T> = {
+    <lo:@L> <s:S> <hi:@L> => {
+        term::Meta {
+            val: s,
+            mark: Mark { lo: lo, hi: hi },
+            typ: typ::into(typ::Meta {
+              val: TypV::Hole,
+              mark: DUMMY.clone(),
+            })
+        }
+    }
+};
+
+// Dummy definitions to work with the LALRPOP type system
+Term: Term = {};
+Var: Var = {};
+TermV: TermV = {};
+
+M<T>: Term = {
+    Meta<T, TermV> => term::into(<>)
+};
+
 Typ: Typ = {
 
 };
 
-pub Block: Term = {
-    Let <id:Id> Eq <bind:Expr> Semi <body:Block> =>
-        term::into(TermV::Let((bind, (id, body)))),
-    <l:Expr> Semi <r:Block> =>
-        term::into(TermV::Let((l, (Var::from_string("dummy".to_string()), r)))),
-    Expr
+pub Toplevel: Term = { M<Block> };
+
+Block: TermV = {
+    Let <id:Id> Eq <bind:M<Prec0>> Semi <body:M<Block>> =>
+        TermV::Let((bind, (id, body))),
+    <l:M<Prec0>> Semi <r:M<Block>> =>
+        TermV::Let((l, (Var::from_string("dummy".to_string()), r))),
+    Prec0
 };
 
-Expr: Term = {
-    <l:Expr> Plus <r:Atom> => term::into(TermV::Plus((l, r))),
-    <l:Expr> <r:Atom> => term::into(TermV::App((l, r))),
-    Atom
+Prec0: TermV = {
+    <l:M<Prec0>> <r:M<Prec1>> => TermV::App((l, r)),
+    Prec1
 };
 
-Atom: Term = {
-    Int => term::into(TermV::Number(<>)),
-    Id => term::into(TermV::Var(<>)),
-    String => term::into(TermV::String(<>)),
+Prec1: TermV = {
+    Fun <id:Id> Arrow <e:M<Prec1>> => TermV::Lam((id, e)),
+    Prec2
+};
+
+Prec2: TermV = {
+    <l:M<Prec2>> Plus <r:M<Prec3>> => TermV::Plus((l, r)),
+    Prec3
+};
+
+Prec3: TermV = {
+    Int => TermV::Number(<>),
+    Meta<Id, Var> => term::var(<>),
+    String => TermV::String(<>),
     Lparen <e:Block> Rparen => e,
     Lbrace <e:Block> Rbrace => e,
-    Fun <id:Id> Arrow Lbrace <e:Expr> Rbrace => term::into(TermV::Lam((id, e))),
-    QuoteMarker Lbrace <q:Quote?> Rbrace => term::into(TermV::Quote(match q {
-        Some(q) => q,
-        None => vec![]
-    }))
+    QuoteMarker Lbrace <q:M<QuotePart>*> Rbrace => TermV::Quote(q)
 };
 
-Quote: Vec<Term> = {
-    <q:QuoteChar> <qs:Quote> => {
-         let mut qs = qs;
-         qs.insert(0, term::into(TermV::String(q)));
-         qs
-     },
-     <s:Splice> <qs:Quote> => {
-         let mut qs = qs;
-         qs.insert(0, term::into(TermV::Var(Var::from_string(s))));
-         qs
-     },
-     QuoteChar => vec![term::into(TermV::String(<>))],
-     Splice => vec![term::into(TermV::Var(Var::from_string(<>)))]
+StringToVar<T>: Var = {
+    T => Var::from_string(<>)
 };
 
-Id: Var = { IdT => Var::from_string(<>) };
+QuotePart: TermV = {
+    QuoteChar => TermV::String(<>),
+    Meta<StringToVar<Splice>, Var> => term::var(<>)
+};
+
+Id: Var = { StringToVar<IdT> };

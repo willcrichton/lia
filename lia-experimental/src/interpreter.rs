@@ -10,6 +10,8 @@ pub struct EvalState<'a, 'b> {
     pub jit: Jit<'b, JitEngine>
 }
 
+// Thought about implementing small step semantics, but then I got lazy.
+// Yay big steps!
 pub fn eval<'a, 'b>(st: &mut EvalState<'a, 'b>, expr: Term) -> Term {
     match out(expr) {
         e @ View::Number(_) | e @ View::Lam(_) | e @ View::String(_) => into(e),

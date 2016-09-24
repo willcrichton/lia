@@ -1,12 +1,28 @@
-use token::Token;
+use token::{Token as Tok};
 use std::str::FromStr;
+use mark::{Mark, Marked};
 
-macro_rules! some { ($x:expr) => { |_: &mut Lexer<R>| -> Option<Token> { Some($x) } } }
+type Token = Marked<Tok>;
+
+macro_rules! mark {
+    ($lexer:ident, $e:expr) => {
+        Some(Marked {
+            node: $e,
+            mark: Mark {
+                lo: $lexer._input.tok.off as u32,
+                hi: $lexer._input.pos.off as u32
+            }
+        })
+    }
+}
+
+macro_rules! some { ($x:expr) => { |lexer: &mut Lexer<R>| -> Option<Token> {
+    mark!(lexer, $x)
+} } }
 macro_rules! none { () => { |_: &mut Lexer<R>| -> Option<Token> { None } } }
 
-
 rustlex! Lexer {
-    property depth:u32 = 0;
+    property depth: u32 = 0;
 
     let WHITESPACE = [' ' '\n' '\t'];
     let ID = ['a'-'z''A'-'Z''_']['a'-'z''A'-'Z''_''0'-'9']*;
@@ -14,67 +30,77 @@ rustlex! Lexer {
     let STRING = '"' .* '"';
 
     INITIAL {
-        . => |lexer: &mut Lexer<R>| -> Option<Token> { panic!("unexpected token {:?}", lexer.yystr()) },
+        . => |lexer: &mut Lexer<R>| -> Option<Token> {
+            panic!("unexpected token {:?}", lexer.yystr())
+        },
 
         WHITESPACE => none!(),
 
-        ID => |lexer: &mut Lexer<R>| Some(Token::Id(lexer.yystr().clone())),
-        NUM => |lexer: &mut Lexer<R>| Some(Token::Int(i32::from_str(&lexer.yystr()).unwrap())),
-        STRING => |lexer: &mut Lexer<R>| Some(Token::String(lexer.yystr())),
+        ID => |lexer: &mut Lexer<R>| {
+            mark!(lexer, Tok::Id(lexer.yystr().clone()))
+        }
+        NUM => |lexer: &mut Lexer<R>| {
+            mark!(lexer, Tok::Int(i32::from_str(&lexer.yystr()).unwrap()))
+        }
+        STRING => |lexer: &mut Lexer<R>| {
+            mark!(lexer, Tok::String(lexer.yystr()))
+        }
 
-        '(' => some!(Token::Lparen),
-        ')' => some!(Token::Rparen),
+        '(' => some!(Tok::Lparen),
+        ')' => some!(Tok::Rparen),
 
         '{' => |lexer: &mut Lexer<R>| -> Option<Token> {
-            Some(Token::Lbrace)
+            mark!(lexer, Tok::Lbrace)
         },
 
         '}' => |lexer: &mut Lexer<R>| -> Option<Token> {
-            Some(Token::Rbrace)
+            mark!(lexer, Tok::Rbrace)
         },
 
-        ';' => some!(Token::Semi),
-        '=' => some!(Token::Eq),
-        '+' => some!(Token::Plus),
-        "=>" => some!(Token::Arrow),
+        ';' => some!(Tok::Semi),
+        '=' => some!(Tok::Eq),
+        '+' => some!(Tok::Plus),
+        "=>" => some!(Tok::Arrow),
 
-        "fn" => some!(Token::Fun),
-        "let" => some!(Token::Let),
+        "fn" => some!(Tok::Fun),
+        "let" => some!(Tok::Let),
 
         "$rs" WHITESPACE* => |lexer: &mut Lexer<R>| -> Option<Token> {
             lexer.QUOTE();
-            Some(Token::QuoteMarker)
+            mark!(lexer, Tok::QuoteMarker)
         },
     }
 
     QUOTE {
-        [^'{''}''$']+ => |lexer: &mut Lexer<R>| Some(Token::QuoteChar(lexer.yystr())),
+        [^'{''}''$']+ => |lexer: &mut Lexer<R>| {
+            mark!(lexer, Tok::QuoteChar(lexer.yystr()))
+        }
 
         '}' => |lexer: &mut Lexer<R>| -> Option<Token> {
             lexer.depth -= 1;
-            if lexer.depth == 0 {
+            mark!(lexer, if lexer.depth == 0 {
                 lexer.INITIAL();
-                Some(Token::Rbrace)
+                Tok::Rbrace
             } else {
-                Some(Token::QuoteChar("}".to_string()))
-            }
+                Tok::QuoteChar("}".to_string())
+            })
         },
 
         '{' => |lexer: &mut Lexer<R>| -> Option<Token> {
             let tok = if lexer.depth == 0 {
-                Some(Token::Lbrace)
+                Tok::Lbrace
             } else {
-                Some(Token::QuoteChar("{".to_string()))
+                Tok::QuoteChar("{".to_string())
             };
             lexer.depth += 1;
-            tok
+            mark!(lexer, tok)
         },
 
         '$' . => |lexer: &mut Lexer<R>| -> Option<Token> { panic!("bad splice") }
 
         '$' ID => |lexer: &mut Lexer<R>| -> Option<Token> {
             let s = lexer.yystr();
-            Some(Token::Splice((&s[1..s.len()]).to_string()))
+            mark!(lexer, Tok::Splice((&s[1..s.len()]).to_string()))
         },
 
         // "${" => |lexer: &mut Lexer<R>| -> Option<Token> {
@@ -83,7 +109,7 @@ rustlex! Lexer {
         //         *depth += 1;
         //     }
         //     lexer.INITIAL();
-        //     Some(Token::SpliceStart)
+        //     Some(Tok::SpliceStart)
         // }
     }
 }

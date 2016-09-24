@@ -1,4 +1,5 @@
 use rabbot::var::Var;
+use mark::DUMMY;
 use ast::{term, typ};
 use ast::term::{Term, View as TermV};
 use ast::typ::{Typ, View as TypV};
@@ -30,12 +31,24 @@ type TypContext = HashMap<Var, Typ>;
 type Solution = HashMap<Var, Typ>;
 
 macro_rules! ty {
-    ($p:ident { $e:expr }) => { typ::into(TypV::$p($e)) };
-    ($p:ident) => { typ::into(TypV::$p) };
+    ($p:ident { $e:expr }) => { typ::into(typ::Meta {
+        val: TypV::$p($e),
+        mark: DUMMY.clone()
+    }) };
+    ($p:ident) => { typ::into(typ::Meta {
+        val: TypV::$p,
+        mark: DUMMY.clone()
+    }) };
 }
 
 fn fresh() -> Typ {
-    typ::into(TypV::Var(Var::new()))
+    typ::into(typ::Meta {
+        val: typ::var(typ::Meta {
+            val: Var::new(),
+            mark: DUMMY.clone()
+        }),
+        mark: DUMMY.clone()
+    })
 }
 
 fn apply_sol(sol: Solution, ty: Typ) -> Typ {
@@ -74,16 +87,21 @@ fn subst_constrs(ty: Typ, var: Var, cs: Vec<Constraint>) -> Vec<Constraint> {
 fn generalize_monotype(ctx: TypContext, ty: Typ) -> Typ {
     let free = typ::free_vars(ty.clone());
     free.into_iter().fold(ty, |ty, var| {
-        typ::into(TypV::ForAll((var, ty)))
+        typ::into(typ::Meta {
+            val: TypV::ForAll((var, ty.clone())),
+            mark: typ::out(ty).mark
+        })
     })
 }
 
 fn unify(mut constraints: Vec<Constraint>) -> Solution {
     match constraints.pop() {
         Some((l, r)) => {
-            match (typ::out(l.clone()), typ::out(r.clone())) {
+            let (lnode, rnode) = (typ::out(l.clone()), typ::out(r.clone()));
+            match (lnode.val, rnode.val) {
                 (TypV::Number, TypV::Number) => unify(constraints),
                 (TypV::Var(i), TypV::Var(j)) => {
+                    let (i, j) = (typ::extract_var(i), typ::extract_var(j));
                     if i == j {
                         unify(constraints)
                     } else {
@@ -93,10 +111,16 @@ fn unify(mut constraints: Vec<Constraint>) -> Solution {
                     }
                 },
                 (TypV::Var(i), ty) | (ty, TypV::Var(i)) => {
+                    let i = typ::extract_var(i);
+                    let ty = typ::into(typ::Meta {
+                        val: ty.clone(),
+                        mark: DUMMY.clone()
+                    });
                     // need to check occurs in
                     add_sol(
-                        i.clone(), typ::into(ty.clone()),
-                        unify(subst_constrs(typ::into(ty), i, constraints)))
+                        i.clone(),
+                        ty.clone(),
+                        unify(subst_constrs(ty, i, constraints)))
                 },
                 (TypV::Arrow((l1, r1)), TypV::Arrow((l2, r2))) => {
                     constraints.push((l1, l2));
@@ -111,22 +135,29 @@ fn unify(mut constraints: Vec<Constraint>) -> Solution {
 }
 
 fn constrain(mut ctx: TypContext, t: Term) -> (Typ, Solution) {
-    match term::out(t) {
+    match term::out(t).val {
         TermV::Number(_) => (ty!(Number), HashMap::new()),
         TermV::String(_) => (ty!(String), HashMap::new()),
         TermV::Var(var) => {
+            let var = term::extract_var(var);
             match ctx.get(&var) {
-                Some(ty) => (match typ::out(ty.clone()) {
+                Some(ty) => (match typ::out(ty.clone()).val {
                     TypV::ForAll((_, ty)) => ty,
                     _ => ty.clone()
                 }, HashMap::new()),
                 None => panic!("Unbound var {:?}", var)
             }
         },
-        TermV::Lam((_, body)) => {
+        TermV::Lam((bind, body)) => {
             let arg_var = Var::new();
-            let arg_ty = typ::into(TypV::Var(arg_var.clone()));
-            ctx.insert(arg_var, arg_ty.clone());
+            let arg_ty = typ::into(typ::Meta {
+                val: typ::var(typ::Meta {
+                    val: arg_var.clone(),
+                    mark: DUMMY.clone()
+                }),
+                mark: DUMMY.clone()
+            });
+            ctx.insert(bind.clone(), arg_ty.clone());
             let (ret_ty, sol) = constrain(ctx, body);
             let arg_ty = apply_sol(sol.clone(), arg_ty.clone());
             (ty!(Arrow{(arg_ty, ret_ty)}), sol)
@@ -139,7 +170,7 @@ fn constrain(mut ctx: TypContext, t: Term) -> (Typ, Solution) {
             let sol = combine_sol(sol.clone(), unify(vec![
                 (apply_sol(sol.clone(), fun_ty),
                  apply_sol(sol.clone(),
-                           typ::into(TypV::Arrow((domain_ty.clone(), range_ty.clone()))))),
+                           ty!(Arrow{(domain_ty.clone(), range_ty.clone())}))),
                 (apply_sol(sol.clone(), arg_ty),
                  apply_sol(sol.clone(), domain_ty))]));
             (range_ty, sol)
@@ -152,7 +183,7 @@ fn constrain(mut ctx: TypContext, t: Term) -> (Typ, Solution) {
             let (r_ty, sol2) = constrain(ctx, body);
             (r_ty, combine_sol(sol1, sol2))
         }
-        _ => panic!()
+        _ => panic!("Unimplemented")
     }
 }
 
