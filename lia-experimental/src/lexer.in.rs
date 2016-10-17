@@ -43,7 +43,8 @@ rustlex! Lexer {
             mark!(lexer, Tok::Int(i32::from_str(&lexer.yystr()).unwrap()))
         }
         STRING => |lexer: &mut Lexer<R>| {
-            mark!(lexer, Tok::String(lexer.yystr()))
+            let s = lexer.yystr();
+            mark!(lexer, Tok::String((&s[1..(s.len()-1)]).to_string()))
         }
 
         '(' => some!(Tok::Lparen),
@@ -57,13 +58,17 @@ rustlex! Lexer {
             mark!(lexer, Tok::Rbrace)
         },
 
+        ',' => some!(Tok::Comma),
+        ':' => some!(Tok::Colon),
         ';' => some!(Tok::Semi),
         '=' => some!(Tok::Eq),
         '+' => some!(Tok::Plus),
-        "=>" => some!(Tok::Arrow),
+        "=>" => some!(Tok::FatArrow),
+        "->" => some!(Tok::ThinArrow),
 
         "fn" => some!(Tok::Fun),
         "let" => some!(Tok::Let),
+        "type" => some!(Tok::Type),
 
         "$rs" WHITESPACE* => |lexer: &mut Lexer<R>| -> Option<Token> {
             lexer.QUOTE();
@@ -96,7 +101,7 @@ rustlex! Lexer {
             mark!(lexer, tok)
         },
 
-        '$' . => |lexer: &mut Lexer<R>| -> Option<Token> { panic!("bad splice") }
+        '$' . => |_: &mut Lexer<R>| -> Option<Token> { panic!("bad splice") }
 
         '$' ID => |lexer: &mut Lexer<R>| -> Option<Token> {
             let s = lexer.yystr();

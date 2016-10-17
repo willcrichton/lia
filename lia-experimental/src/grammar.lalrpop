@@ -1,6 +1,6 @@
-use std::str::FromStr;
+use std::default::Default;
 use super::token::Token;
-use super::mark::{Mark, DUMMY};
+use super::mark::Mark;
 use super::ast::{term, typ};
 use super::ast::term::{Term, View as TermV};
 use super::ast::typ::{Typ, View as TypV};
@@ -23,73 +23,114 @@ extern {
         Rbrace => Token::Rbrace,
         QuoteMarker => Token::QuoteMarker,
         Fun => Token::Fun,
-        Arrow => Token::Arrow,
+        FatArrow => Token::FatArrow,
+        ThinArrow => Token::ThinArrow,
+        Colon => Token::Colon,
+        Comma => Token::Comma,
+        Type => Token::Type,
         QuoteChar => Token::QuoteChar(<String>),
         Splice => Token::Splice(<String>),
         IdT => Token::Id(<String>),
-        TyPrimitive => Token::TyPrimitive(<String>),
         String => Token::String(<String>),
     }
 }
 
-Meta<S, T>: term::Meta<T> = {
+TeMeta<S, T>: term::Meta<T> = {
     <lo:@L> <s:S> <hi:@L> => {
         term::Meta {
             val: s,
             mark: Mark { lo: lo, hi: hi },
-            typ: typ::into(typ::Meta {
-              val: TypV::Hole,
-              mark: DUMMY.clone(),
-            })
+            typ: Default::default()
         }
     }
+};
+
+TeM<T>: Term = {
+    TeMeta<T, TermV> => term::into(<>)
+};
+
+TyMeta<S, T>: typ::Meta<T> = {
+    <lo:@L> <s:S> <hi:@L> => {
+         typ::Meta {
+             val: s,
+             mark: Mark { lo: lo, hi: hi },
+         }
+    }
+};
+
+TyM<T>: Typ = {
+    TyMeta<T, TypV> => typ::into(<>)
 };
 
 // Dummy definitions to work with the LALRPOP type system
 Term: Term = {};
 Var: Var = {};
 TermV: TermV = {};
+TypV: TypV = {};
 
-M<T>: Term = {
-    Meta<T, TermV> => term::into(<>)
+TypP0: TypV = {
+    <t1:TyM<TypP0>> ThinArrow <t2:TyM<TypP1>> => TypV::Arrow((t1, t2)),
+    TypP1
 };
 
-Typ: Typ = {
 
+Sep<T, S>: Vec<T> = {
+    <ts:(<T> S)*> <t:T> => {
+        let mut ts = ts;
+        ts.push(t);
+        ts
+    }
 };
 
-pub Toplevel: Term = { M<Block> };
+TypP1: TypV = {
+    TyMeta<Id, Var> => typ::var(<>),
+    Lbrace Sep<(<Id> Colon <TypP0>), Comma> Rbrace => panic!(),
+};
+
+TyAnnot<T>: (T, Option<Typ>) = {
+    <t:T> <ty:(Colon <TyM<TypP0>>)?> => (t, ty)
+};
+
+pub Toplevel: Term = { TeM<Block> };
 
 Block: TermV = {
-    Let <id:Id> Eq <bind:M<Prec0>> Semi <body:M<Block>> =>
-        TermV::Let((bind, (id, body))),
-    <l:M<Prec0>> Semi <r:M<Block>> =>
-        TermV::Let((l, (Var::from_string("dummy".to_string()), r))),
-    Prec0
+    Let <id:TyAnnot<Id>> Eq <bind:TeM<TermP0>> Semi <body:TeM<Block>> => {
+        let (id, ty) = id;
+        let mut bind = term::out(bind);
+        if let Some(ty) = ty {
+            bind.typ = ty;
+        }
+        TermV::Let((term::into(bind), (id, body)))
+    },
+    <l:TeM<TermP0>> Semi <r:TeM<Block>> =>
+        TermV::Let((l, (Var::new(), r))),
+    Type <id:Id> Eq <l:TyM<TypP0>> Semi <r:TeM<Block>> =>
+        TermV::TLet((l, (id, r))),
+    TermP0
 };
 
-Prec0: TermV = {
-    <l:M<Prec0>> <r:M<Prec1>> => TermV::App((l, r)),
-    Prec1
+TermP0: TermV = {
+    <l:TeM<TermP0>> <r:TeM<TermP1>> => TermV::App((l, r)),
+    TermP1
 };
 
-Prec1: TermV = {
-    Fun <id:Id> Arrow <e:M<Prec1>> => TermV::Lam((id, e)),
-    Prec2
+TermP1: TermV = {
+    Fun <id:Id> FatArrow <e:TeM<TermP1>> => TermV::Lam((id, e)),
+    TermP2
 };
 
-Prec2: TermV = {
-    <l:M<Prec2>> Plus <r:M<Prec3>> => TermV::Plus((l, r)),
-    Prec3
+TermP2: TermV = {
+    <l:TeM<TermP2>> Plus <r:TeM<TermP3>> => TermV::Plus((l, r)),
+    TermP3
 };
 
-Prec3: TermV = {
+TermP3: TermV = {
     Int => TermV::Number(<>),
-    Meta<Id, Var> => term::var(<>),
+    TeMeta<Id, Var> => term::var(<>),
     String => TermV::String(<>),
     Lparen <e:Block> Rparen => e,
     Lbrace <e:Block> Rbrace => e,
-    QuoteMarker Lbrace <q:M<QuotePart>*> Rbrace => TermV::Quote(q)
+    QuoteMarker Lbrace <q:TeM<QuotePart>*> Rbrace => TermV::Quote(q)
 };
 
 StringToVar<T>: Var = {
@@ -98,7 +139,7 @@ StringToVar<T>: Var = {
 
 QuotePart: TermV = {
     QuoteChar => TermV::String(<>),
-    Meta<StringToVar<Splice>, Var> => term::var(<>)
+    TeMeta<StringToVar<Splice>, Var> => term::var(<>)
 };
 
 Id: Var = { StringToVar<IdT> };
