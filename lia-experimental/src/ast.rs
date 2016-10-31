@@ -31,7 +31,7 @@ rabbot! {
         Exists(Binding<Typ> . Typ)
     }
 
-    enum Term {mark: Mark, typ: Typ} {
+    enum Term {mark: Mark} {
         Dummy,
         Number(i32),
         String(String),
@@ -40,6 +40,9 @@ rabbot! {
         Lam(Binding<Term> . Term),
         Let((Term, Binding<Term> . Term)),
         TLet((Typ, Binding<Typ>. Term)),
+        Product(Vec<(String, Term)>),
+        Dot((Term, String)),
+        Annot((Term, Typ)),
         App((Term, Term))
     }
 }

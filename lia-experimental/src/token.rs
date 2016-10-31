@@ -14,6 +14,7 @@ pub enum Token {
     ThinArrow,
     Colon,
     Comma,
+    Dot,
     Type,
     String(String),
     Id(String),

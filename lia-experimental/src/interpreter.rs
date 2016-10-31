@@ -10,10 +10,8 @@ pub struct EvalState<'a, 'b> {
     pub jit: Jit<'b, JitEngine>
 }
 
-// Thought about implementing small step semantics, but then I got lazy.
-// Yay big steps!
 pub fn eval<'a, 'b>(st: &mut EvalState<'a, 'b>, expr: Term) -> Term {
-    println!("{:?}", expr);
+    //println!("{:?}", expr);
     match out(expr).val {
         e @ View::Number(_) | e @ View::Lam(_) | e @ View::String(_) => into_view(e),
         View::Plus((l, r)) => {
@@ -26,6 +24,7 @@ pub fn eval<'a, 'b>(st: &mut EvalState<'a, 'b>, expr: Term) -> Term {
             eval(st, subst(e, var, body))
         },
         View::TLet((_, (_, body))) => eval(st, body),
+        View::Annot((t, _)) => eval(st, t),
         View::App((fun, arg)) => {
             match out(eval(st, fun)).val {
                 View::Lam((var, body)) => {
@@ -49,6 +48,16 @@ pub fn eval<'a, 'b>(st: &mut EvalState<'a, 'b>, expr: Term) -> Term {
         },
         View::Quote(parts) => {
             into_view(View::Quote(parts.into_iter().map(|part| eval(st, part)).collect()))
+        },
+        View::Product(fields) => {
+            into_view(View::Product(
+                fields.into_iter().map(|(key, val)| (key, eval(st, val))).collect()))
+        },
+        View::Dot((prod, key)) => {
+            bind!(View::Product{fields} = out(eval(st, prod)).val);
+            let (_, val) =
+                fields.into_iter().find(|&(ref fkey, _)| *fkey == key).unwrap();
+            val
         },
         View::Var(_) | View::Var_(_) | View::Dummy => unreachable!(),
     }

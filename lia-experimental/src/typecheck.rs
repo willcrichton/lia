@@ -13,6 +13,12 @@ type Constraint = (Typ, Typ);
 type TypContext = HashMap<Var, Typ>; // term variables -> types
 type Solution   = HashMap<Var, Typ>; // type variables -> types
 
+macro_rules! err {
+    ($($x:expr),*) => {
+        return Err(format!($($x),*))
+    }
+}
+
 fn fresh() -> Typ {
     typ::into_view(typ::var(typ::Meta {
         val: Var::new(),
@@ -131,7 +137,7 @@ fn unify(mut constraints: Vec<Constraint>) -> Solution {
 fn constrain(mut ctx: TypContext, t: Term, base_sol: &Solution)
              -> Result<(Typ, Solution), String>
 {
-    println!("{:?}", t);
+    //println!("{:?}", t);
     let node = term::out(t);
     let (typ, sol) = match node.val.clone() {
         TermV::Number(_) => (typ::into_view(TypV::Primitive(TyPrim::Int32)), HashMap::new()),
@@ -156,14 +162,14 @@ fn constrain(mut ctx: TypContext, t: Term, base_sol: &Solution)
                 mark: DUMMY.clone()
             });
             ctx.insert(bind.clone(), arg_ty.clone());
-            let (ret_ty, sol) = constrain(ctx, body, base_sol)?;
+            let (ret_ty, sol) = constrain(ctx.clone(), body, base_sol)?;
             let arg_ty = apply_sol(&sol, arg_ty.clone());
             (typ::into_view(TypV::Arrow((arg_ty, ret_ty))), sol)
         },
         TermV::App((l, r)) => {
             let (domain_ty, range_ty) = (fresh(), fresh());
             let (fun_ty, sol1) = constrain(ctx.clone(), l, base_sol)?;
-            let (arg_ty, sol2) = constrain(apply_sol_ctx(&sol1, ctx), r, base_sol)?;
+            let (arg_ty, sol2) = constrain(apply_sol_ctx(&sol1, ctx.clone()), r, base_sol)?;
             let sol = combine_sol(sol1, sol2);
             let sol = combine_sol(sol.clone(), unify(vec![
                 (apply_sol(&sol, fun_ty),
@@ -175,17 +181,17 @@ fn constrain(mut ctx: TypContext, t: Term, base_sol: &Solution)
         },
         TermV::Let((t, (var, body))) => {
             let (t_ty, sol1) = constrain(ctx.clone(), t, base_sol)?;
-            let mut ctx = apply_sol_ctx(&sol1, ctx);
+            let mut ctx = apply_sol_ctx(&sol1, ctx.clone());
             let t_ty = generalize_monotype(ctx.clone(), apply_sol(&sol1, t_ty));
             ctx.insert(var, t_ty.clone());
             let (r_ty, sol2) = constrain(ctx, body, base_sol)?;
             (r_ty, combine_sol(sol1, sol2))
         },
         TermV::TLet((t, (var, body))) => {
-            println!("{:?}, {:?}, {:?}", t, var, body);
             let mut sol = base_sol.clone();
+            let t = apply_sol(&sol, t);
             sol.insert(var, t);
-            let (r_ty, rsol) = constrain(ctx, body, &sol)?;
+            let (r_ty, rsol) = constrain(ctx.clone(), body, &sol)?;
             (r_ty, combine_sol(sol, rsol))
         },
         TermV::Plus((l, r)) => {
@@ -203,29 +209,78 @@ fn constrain(mut ctx: TypContext, t: Term, base_sol: &Solution)
             let ty = typ::into_view(TypV::Arrow((a, b)));
             (ty, HashMap::new())
         },
+        TermV::Annot((t, annotated)) => {
+            let (inferred, sol) = constrain(ctx.clone(), t, base_sol)?;
+            if !is_subtype(
+                apply_sol(&sol, annotated.clone()),
+                apply_sol(&sol, inferred.clone())) {
+                return Err(format!("Annotation error: {} != {}",
+                                   typ_to_string(annotated),
+                                   typ_to_string(inferred)));
+            }
+            (annotated, sol)
+        },
+        TermV::Product(fields) => {
+            let mut expected = None;
+            for (ty_name, ty) in base_sol.iter() {
+                if let TypV::Product(ty_fields) = typ::out(ty.clone()).val {
+                    expected = Some((ty.clone(), ty_name.clone(), ty_fields));
+                }
+            }
+
+            match expected {
+                Some((ty, ty_name, ty_fields)) => {
+                    let mut sol = base_sol.clone();
+                    for (key, val) in fields.into_iter() {
+                        let mut found = false;
+                        for &(ref ty_key, ref ty_val) in ty_fields.iter() {
+                            if key == *ty_key {
+                                found = true;
+                                let (ty_term_val, new_sol) =
+                                    constrain(ctx.clone(), val, &sol)?;
+                                sol = combine_sol(sol, new_sol);
+
+                                if !typ::aequiv(ty_term_val.clone(), ty_val.clone()) {
+                                    return Err(format!(
+                                        "{:?}: {} != {}",
+                                        key,
+                                        typ_to_string(ty_val.clone()),
+                                        typ_to_string(ty_term_val)));
+                                }
+
+                                break;
+                            }
+                        }
+
+                        if !found {
+                            err!("Unexpected field {:?}", key);
+                        }
+                    }
+
+                    (ty, sol)
+                }
+                None => err!("No matching product type")
+            }
+        },
+        TermV::Dot((prod, key)) => {
+            let (prod_ty, sol) = constrain(ctx.clone(), prod, base_sol)?;
+            match typ::out(prod_ty).val {
+                TypV::Product(fields) => {
+                    match fields.iter().find(|&&(ref ty_key, _)| key == *ty_key) {
+                        Some(&(_, ref ty_val)) => (ty_val.clone(), sol),
+                        None => err!("Key `{}` does not exist", key)
+                    }
+                },
+                _ => err!("Key access `{}` on non-product type", key)
+            }
+        },
         TermV::Var_(_) | TermV::Dummy => unreachable!(),
     };
 
     let sol = combine_sol(base_sol.clone(), sol);
 
-    println!("{:?}", sol);
-    let (inferred, annotated) =
-        (typ.clone(), apply_sol(&sol, node.typ));
-
-    let typ = match typ::out(annotated.clone()).val {
-        TypV::Hole => inferred,
-        _ => {
-            if !is_subtype(annotated.clone(), inferred.clone()) {
-                return Err(format!("Annotation error: {} != {}",
-                                   typ_to_string(annotated),
-                                   typ_to_string(inferred)));
-            }
-
-            annotated
-        }
-    };
-
-    println!("{:?} --> {:?}", node.val, typ);
+    //let typ = resolve_alias(&sol, typ);
+    //println!("{:?} --> {:?}", node.val, typ);
 
     Ok((typ, sol))
 }

@@ -27,6 +27,7 @@ extern {
         ThinArrow => Token::ThinArrow,
         Colon => Token::Colon,
         Comma => Token::Comma,
+        Dot => Token::Dot,
         Type => Token::Type,
         QuoteChar => Token::QuoteChar(<String>),
         Splice => Token::Splice(<String>),
@@ -40,7 +41,6 @@ TeMeta<S, T>: term::Meta<T> = {
         term::Meta {
             val: s,
             mark: Mark { lo: lo, hi: hi },
-            typ: Default::default()
         }
     }
 };
@@ -84,7 +84,7 @@ Sep<T, S>: Vec<T> = {
 
 TypP1: TypV = {
     TyMeta<Id, Var> => typ::var(<>),
-    Lbrace Sep<(<Id> Colon <TypP0>), Comma> Rbrace => panic!(),
+    Lbrace <tys:Sep<(<IdT> Colon <TyM<TypP0>>), Comma>> Rbrace => TypV::Product(tys),
 };
 
 TyAnnot<T>: (T, Option<Typ>) = {
@@ -96,11 +96,14 @@ pub Toplevel: Term = { TeM<Block> };
 Block: TermV = {
     Let <id:TyAnnot<Id>> Eq <bind:TeM<TermP0>> Semi <body:TeM<Block>> => {
         let (id, ty) = id;
-        let mut bind = term::out(bind);
-        if let Some(ty) = ty {
-            bind.typ = ty;
-        }
-        TermV::Let((term::into(bind), (id, body)))
+        let bind = match ty {
+            Some(ty) => term::into(term::Meta {
+                val: TermV::Annot((bind, ty)),
+                ..Default::default()
+            }),
+            None => bind
+        };
+        TermV::Let((bind, (id, body)))
     },
     <l:TeM<TermP0>> Semi <r:TeM<Block>> =>
         TermV::Let((l, (Var::new(), r))),
@@ -125,11 +128,17 @@ TermP2: TermV = {
 };
 
 TermP3: TermV = {
+    <l:TeM<TermP3>> Dot <r:IdT> => TermV::Dot((l, r)),
+    TermP4
+};
+
+TermP4: TermV = {
     Int => TermV::Number(<>),
     TeMeta<Id, Var> => term::var(<>),
     String => TermV::String(<>),
     Lparen <e:Block> Rparen => e,
     Lbrace <e:Block> Rbrace => e,
+    Lbrace <fields:Sep<(<IdT> Colon <TeM<Block>>), Comma>> Rbrace => TermV::Product(fields),
     QuoteMarker Lbrace <q:TeM<QuotePart>*> Rbrace => TermV::Quote(q)
 };
 

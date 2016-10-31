@@ -45,6 +45,7 @@ pub fn compile(input: String) -> Term {
     let tokens = lexer.collect::<Vec<Marked<Token>>>();
     // println!("{:?}", tokens);
     let abt = parse_toplevel(tokens).unwrap();
+    //println!("{:?}", abt);
     if let Err(err) = typecheck::infer(abt.clone()) {
         panic!("{}", err)
     }
@@ -61,42 +62,62 @@ mod tests {
 
     use ast::term::{View, out};
 
-    #[test]
-    fn call_function() {
-        let src = "
-let x = fn y => { y + 1 };
-(x 1)";
-        bind!(View::Number{n} = out(compile(src.to_string())).val);
-        assert_eq!(n, 2);
+    macro_rules! test_pass {
+        ($name:ident, $src:expr) => {
+            #[test]
+            fn $name () {
+                compile($src.to_string());
+            }
+        };
+        ($name:ident, $src:expr, $expected:expr) => {
+            #[test]
+            fn $name () {
+                bind!(View::Number{n} = out(compile($src.to_string())).val);
+                assert_eq!(n, $expected);
+            }
+        };
     }
 
-    #[test]
-    fn quote() {
-        let result = out(compile("
-let n = 3;
+    macro_rules! test_fail {
+        ($name:ident, $src:expr) => {
+            #[test]
+            #[should_panic]
+            fn $name () {
+                compile($src.to_string());
+            }
+        }
+    }
+
+    test_pass!(
+        call_function,
+        "let x = fn y => { y + 1 }; (x 0)",
+        1);
+
+    test_pass!(
+        quote,
+        "
+let n = 0;
 let incr: i32 -> i32 = $rs {
   fn incr_n(x: i32) -> i32 { x + $n }
 };
-(incr 1)".to_string()));
-        bind!(View::Number{n} = result.val);
-        assert_eq!(n, 4);
-    }
+(incr 1)",
+        1);
 
-    #[test]
-    fn preserve_polymorphism() {
-        let src = r#"let x = fn y => { 1 }; (x 1); (x "foo"); x"#;
-        out(compile(src.to_string()));
-    }
+    test_pass!(
+        preserve_polymorphism,
+        r#"let x = fn y => { 1 }; (x 1); (x "foo"); x"#);
 
-    #[test]
-    fn type_alias() {
-        let src = "type X = i32; let n: X = 3; n";
-        out(compile(src.to_string()));
-    }
+    test_pass!(
+        type_alias,
+        "type X = i32; let n: X = 3; n");
 
-    #[test]
-    fn product() {
-        let src = "type Foo = { x: i32 }; let x = { x: 3 }; x.x";
-        out(compile(src.to_string()));
-    }
+    test_pass!(
+        product_type,
+        "type Foo = { y: i32 }; let x = { y: 3 }; x.y",
+        3);
+
+    test_fail!(
+        product_no_type_decl,
+        "let x = { y: 3 }; x.y");
+
 }

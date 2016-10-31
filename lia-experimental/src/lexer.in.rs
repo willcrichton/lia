@@ -58,6 +58,7 @@ rustlex! Lexer {
             mark!(lexer, Tok::Rbrace)
         },
 
+        '.' => some!(Tok::Dot),
         ',' => some!(Tok::Comma),
         ':' => some!(Tok::Colon),
         ';' => some!(Tok::Semi),
