@@ -2,7 +2,7 @@
 
 > 俩 (liǎ) - 1. two, 2. a pair
 
-Lia is a dynamically typed and garbage collected programming language that seamlessly interopates with Rust by using Rust as a compile target. This enables Lia users to drop down into efficient Rust code when necessary, but work with a high-level Javascript-esque language for the majority of their application. For example, binding to a matrix library (à la numpy) is simple:
+Lia is a dynamically typed and garbage collected programming language that seamlessly interoperates with Rust by using Rust as a compile target. This enables Lia users to drop down into efficient Rust code when necessary, but work with a high-level Javascript-esque language for the majority of their application. For example, binding to a matrix library (à la numpy) is simple:
 
 ```rust
 // lia! declares a set of Lia functions. It is a procedural macro that compiles Lia into Rust.
@@ -103,7 +103,7 @@ All values in Lia (integers, closures, etc.) have the type `LiaAny`. We'll walk 
 
 ### Eliminating memory management
 
-The burden of managing memory/lifetimes is shifted from the programmer at compile time to the program at runtime via reference counting (type `Rc`). Ideally this would be a garbage collected pointer(like [this one](https://github.com/Manishearth/rust-gc)) that won't leak memory when cycles are induced, but that can come later. The `Rc` wraps a `RefCell` to allow the enclosed value to be mutated.
+The burden of managing memory/lifetimes is shifted from the programmer at compile time to the program at runtime via reference counting (type `Rc`). Ideally this would be a garbage collected pointer (like [this one](https://github.com/Manishearth/rust-gc)) that won't leak memory when cycles are induced, but that can come later. The `Rc` wraps a `RefCell` to allow the enclosed value to be mutated.
 
 A simple implementation of a runtime-managed type could be just `Rc<RefCell<T>>`. However, we need a second layer of indirection because variables can be reassigned. Consider the following example:
 
